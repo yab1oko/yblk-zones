@@ -1,0 +1,13 @@
+{
+  "name": "Claim plot",
+  "flags": [
+    "VISIBLE",
+    "DISPLAY",
+    "CLAIM"
+  ],
+  "settings": {
+    "outline": "HATCH",
+    "outlineProximity": "ALWAYS",
+    "hatchHeight": 2.5
+  }
+}
