@@ -9,7 +9,10 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.registries.ForgeRegistries;
+import yblk.zones.event.ZoneRaidEndEvent;
+import yblk.zones.event.ZoneRaidStartEvent;
 import yblk.zones.ZonesConfig;
 import yblk.zones.network.SyncZonesPacket;
 import yblk.zones.network.ZonesNetwork;
@@ -431,6 +434,7 @@ public final class ZoneManager {
         }
         zone.setEventActive(true);
         zone.setEventStartedAt(now);
+        MinecraftForge.EVENT_BUS.post(new ZoneRaidStartEvent(level, zone, player));
         zone.resetEventRuntime();
         if (zone.isDenyExitWhileEvent()) {
             zone.setDenyExit(true);
@@ -481,6 +485,7 @@ public final class ZoneManager {
     private static void finishEvent(ServerLevel level, Zone zone, ServerPlayer player) {
         zone.setEventActive(false);
         zone.setDenyExit(false);
+        MinecraftForge.EVENT_BUS.post(new ZoneRaidEndEvent(level, zone, player));
         long now = level.getGameTime();
         zone.setEventCooldownUntil(now + zone.settings().eventCooldownTicks());
         zone.setEventStartedAt(0);

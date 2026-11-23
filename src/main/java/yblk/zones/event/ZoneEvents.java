@@ -34,6 +34,7 @@ import net.minecraft.world.level.GameType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
@@ -505,11 +506,13 @@ public final class ZoneEvents {
                 Zone prev = ZoneManager.data(level).get(prevId);
                 if (prev != null) {
                     ZoneScriptEngine.run(level, prev, ZoneTrigger.ON_EXIT, player);
+                    MinecraftForge.EVENT_BUS.post(new ZoneExitEvent(player, prev));
                 }
             }
             if (zone != null) {
                 ZoneScriptEngine.run(level, zone, ZoneTrigger.ON_ENTER, player);
                 onZoneEnter(player, level, zone);
+                MinecraftForge.EVENT_BUS.post(new ZoneEnterEvent(player, zone));
             }
             if (currentId == null) {
                 LAST_ZONE.remove(playerId);
