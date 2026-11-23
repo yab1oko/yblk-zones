@@ -1766,6 +1766,12 @@ public class ZoneCreateScreen extends Screen {
 
         if (navContentHeight > view) {
             drawScrollBar(g, panelX + NAV_W - 5, navScroll, navContentHeight, view);
+            if (navScroll > 0) {
+                g.drawString(font, "^", panelX + NAV_W - 12, contentTop() + 1, ACCENT, false);
+            }
+            if (navScroll + view < navContentHeight) {
+                g.drawString(font, "v", panelX + NAV_W - 12, contentBottom() - 10, ACCENT, false);
+            }
         }
         if (detailContentHeight > view) {
             drawScrollBar(g, panelX + panelW - 5, detailScroll, detailContentHeight, view);
