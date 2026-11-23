@@ -64,9 +64,9 @@ public class ParticlePickerScreen extends Screen {
     protected void init() {
         clearWidgets();
         rows.clear();
-        panelW = Math.min(360, width - 20);
+        panelW = Math.min(200, Math.max(120, width / 2 - 56));
         panelH = Math.min(280, height - 20);
-        panelX = (width - panelW) / 2;
+        panelX = 8;
         panelY = (height - panelH) / 2;
         search = new EditBox(font, panelX + 10, panelY + 22, panelW - 20, 14,
                 Component.translatable("screen.yblk_zones.search"));
@@ -164,7 +164,7 @@ public class ParticlePickerScreen extends Screen {
         }
         Vec3 eye = mc.player.getEyePosition(1.0F);
         Vec3 look = mc.player.getViewVector(1.0F);
-        Vec3 base = eye.add(look.scale(1.35));
+        Vec3 base = eye.add(look.scale(0.85));
         var rand = mc.level.random;
         for (int i = 0; i < 6; i++) {
             double ox = (rand.nextDouble() - 0.5) * 0.55;
@@ -189,7 +189,23 @@ public class ParticlePickerScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        renderBackground(g);
+        int well = 72;
+        int wx = this.width / 2 - well / 2;
+        int wy = this.height / 2 - well / 2;
+        int dim = 0xC0101014;
+        g.fill(0, 0, this.width, wy, dim);
+        g.fill(0, wy, wx, wy + well, dim);
+        g.fill(wx + well, wy, this.width, wy + well, dim);
+        g.fill(0, wy + well, this.width, this.height, dim);
+        g.fill(wx - 1, wy - 1, wx + well + 1, wy, ACCENT);
+        g.fill(wx - 1, wy + well, wx + well + 1, wy + well + 1, ACCENT);
+        g.fill(wx - 1, wy, wx, wy + well, ACCENT);
+        g.fill(wx + well, wy, wx + well + 1, wy + well, ACCENT);
+        ParticleType<?> shown = previewId == null ? null : ForgeRegistries.PARTICLE_TYPES.getValue(previewId);
+        if (previewId != null && !(shown instanceof SimpleParticleType)) {
+            String none = Component.translatable("screen.yblk_zones.particle_no_preview").getString();
+            g.drawString(font, none, wx + 4, wy + well / 2 - 4, TEXT, false);
+        }
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL);
         g.fill(panelX, panelY, panelX + panelW, panelY + 1, ACCENT);
         g.drawString(font, title, panelX + 10, panelY + 8, ACCENT, false);

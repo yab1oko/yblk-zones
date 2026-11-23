@@ -416,5 +416,5 @@
   "screen.yblk_zones.event_enabled": "Event zone: %s",
   "screen.yblk_zones.event_needs_confirm": "Event confirm: %s",
   "screen.yblk_zones.event_deny_exit_flag": "Deny exit in event: %s",
-  "effect.yblk_zones.radiation": "Radiation"
+  "screen.yblk_zones.particle_no_preview": "No preview"
 }

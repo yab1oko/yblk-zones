@@ -136,7 +136,7 @@ public final class ZoneSettings {
     private OutlineStyle outlineStyle = OutlineStyle.FULL;
     private int outlineColor = 0x55CCFF;
     private OutlineProximity outlineProximity = OutlineProximity.ALWAYS;
-    private float proximityRadius = 3.5F;
+    private float proximityRadius = configuredProximity();
     private HatchProximity hatchProximity = HatchProximity.ALWAYS;
     private float hatchApproachDistance = 7.0F;
     /** How tall the hatch/gradient band is (blocks). */
@@ -480,6 +480,14 @@ public final class ZoneSettings {
     public void cycleOutlineProximity() {
         OutlineProximity[] all = OutlineProximity.values();
         outlineProximity = all[(outlineProximity.ordinal() + 1) % all.length];
+    }
+
+    private static float configuredProximity() {
+        float configured = yblk.zones.ZonesConfig.defaultProximityRadius;
+        if (configured < 1.5F) {
+            return 3.5F;
+        }
+        return Mth.clamp(configured, 1.5F, 8.0F);
     }
 
     public float proximityRadius() {

@@ -42,7 +42,7 @@ public final class ZonesConfig {
             .defineInRange("damageIntervalTicks", 40, 5, 200);
 
     private static final ForgeConfigSpec.DoubleValue DEFAULT_DAMAGE = B
-            .comment("Hearts of damage per tick in a damage zone (1.0 = half heart).")
+            .comment("Vanilla damage units per tick in a damage zone. 1.0 is half a heart, 2.0 is one heart. This is the same number passed to player.hurt.")
             .defineInRange("damageAmount", 1.0, 0.0, 40.0);
 
     private static final ForgeConfigSpec.DoubleValue GRADIENT_HEIGHT = B

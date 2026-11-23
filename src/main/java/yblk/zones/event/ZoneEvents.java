@@ -238,7 +238,13 @@ public final class ZoneEvents {
         if (!(player.level() instanceof ServerLevel level) || !isAdventure(player)) {
             return;
         }
-        Zone zone = ZoneManager.at(level, player.blockPosition());
+        BlockPos harvested = player.blockPosition();
+        net.minecraft.world.phys.HitResult look = player.pick(6.0D, 1.0F, false);
+        if (look instanceof net.minecraft.world.phys.BlockHitResult blockHit
+                && blockHit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            harvested = blockHit.getBlockPos();
+        }
+        Zone zone = ZoneManager.at(level, harvested);
         if (zone != null && zone.has(ZoneFlag.ADVENTURE_BREAK)) {
             event.setCanHarvest(true);
         }
@@ -477,34 +483,12 @@ public final class ZoneEvents {
         }
 
         refreshWhileInsideEffects(player, zone);
-        playLoopSound(level, player, zone);
         if (player.tickCount % Math.max(1, zone.settings().particleRate()) == 0) {
             spawnZoneParticles(level, zone, player);
         }
         if (zone.isEventActive() && player.tickCount % 40 == 0) {
             ZoneScriptEngine.run(level, zone, ZoneTrigger.ON_EVENT_TICK, player);
         }
-    }
-
-    private static void playLoopSound(ServerLevel level, ServerPlayer player, Zone zone) {
-        ZoneSettings s = zone.settings();
-        if (s.loopSound().isBlank()) {
-            return;
-        }
-        // ~every 2s while inside — ambient loop without DISPLAY requirement
-        if (player.tickCount % 40 != 0) {
-            return;
-        }
-        ResourceLocation soundId = ResourceLocation.tryParse(s.loopSound());
-        if (soundId == null) {
-            return;
-        }
-        SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(soundId);
-        if (sound == null) {
-            return;
-        }
-        level.playSound(null, player.blockPosition(), sound, SoundSource.AMBIENT,
-                s.loopSoundVolume(), 1.0F);
     }
 
     private static void handleZonePresence(ServerPlayer player, ServerLevel level, Zone zone) {

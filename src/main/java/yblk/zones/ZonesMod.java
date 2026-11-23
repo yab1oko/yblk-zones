@@ -14,7 +14,6 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 import yblk.zones.command.ZoneCommands;
 import yblk.zones.init.ModCreativeTabs;
-import yblk.zones.init.ModEffects;
 import yblk.zones.init.ModItems;
 import yblk.zones.init.ModLootModifiers;
 import yblk.zones.network.ZonesNetwork;
@@ -31,7 +30,6 @@ public class ZonesMod {
         ModItems.ITEMS.register(modBus);
         ModCreativeTabs.TABS.register(modBus);
         ModLootModifiers.SERIALIZERS.register(modBus);
-        ModEffects.EFFECTS.register(modBus);
         modBus.addListener(this::commonSetup);
 
         MinecraftForge.EVENT_BUS.register(this);

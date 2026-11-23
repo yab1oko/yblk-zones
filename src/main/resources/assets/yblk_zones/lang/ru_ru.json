@@ -416,5 +416,5 @@
   "screen.yblk_zones.event_enabled": "Зона ивента: %s",
   "screen.yblk_zones.event_needs_confirm": "Подтверждение ивента: %s",
   "screen.yblk_zones.event_deny_exit_flag": "Блок выхода в ивенте: %s",
-  "effect.yblk_zones.radiation": "Радиация"
+  "screen.yblk_zones.particle_no_preview": "Нет превью"
 }
