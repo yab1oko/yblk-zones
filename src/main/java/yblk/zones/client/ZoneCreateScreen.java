@@ -1019,7 +1019,7 @@ public class ZoneCreateScreen extends Screen {
             }
             case FLAG_SET -> {
                 if (a.value().isBlank()) {
-                    a.setValue("PVP=true");
+                    a.setValue("CLAIM=true");
                 }
             }
             default -> {

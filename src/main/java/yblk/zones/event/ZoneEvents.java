@@ -15,11 +15,21 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.Painting;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.BucketItem;
+import net.minecraft.world.item.FireChargeItem;
+import net.minecraft.world.item.FlintAndSteelItem;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.BaseFireBlock;
+import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
 import net.minecraft.world.level.GameType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
@@ -27,8 +37,14 @@ import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.EntityMobGriefingEvent;
+import net.minecraftforge.event.entity.EntityTeleportEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.living.LivingHurtEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
+import net.minecraftforge.event.level.ExplosionEvent;
+import net.minecraftforge.event.level.PistonEvent;
 import net.minecraftforge.event.entity.living.MobSpawnEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent.PlayerChangedDimensionEvent;
@@ -51,6 +67,7 @@ import yblk.zones.zone.ZoneSettings;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -58,6 +75,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ZoneEvents {
     private static final Map<UUID, UUID> LAST_ZONE = new ConcurrentHashMap<>();
     private static final Map<UUID, Vec3> LAST_INSIDE = new ConcurrentHashMap<>();
+    private static final Map<UUID, Vec3> LAST_OUTSIDE = new ConcurrentHashMap<>();
+    private static final Set<UUID> PULLING = ConcurrentHashMap.newKeySet();
 
     private ZoneEvents() {
     }
@@ -133,6 +152,10 @@ public final class ZoneEvents {
             return;
         }
         if (!(event.getEntity() instanceof Player player)) {
+            Zone foreign = ZoneManager.at(level, event.getPos());
+            if (foreign != null && foreign.has(ZoneFlag.CLAIM)) {
+                event.setCanceled(true);
+            }
             return;
         }
         Zone zone = ZoneManager.at(level, event.getPos());
@@ -269,6 +292,144 @@ public final class ZoneEvents {
         }
     }
 
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onPlayerAttack(LivingAttackEvent event) {
+        if (!(event.getEntity() instanceof Player victim)) {
+            return;
+        }
+        Entity source = event.getSource().getEntity();
+        if (!(source instanceof Player attacker) || attacker == victim) {
+            return;
+        }
+        if (inFlag(attacker, ZoneFlag.DENY_PVP) || inFlag(victim, ZoneFlag.DENY_PVP)) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onProtectUse(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getLevel() instanceof ServerLevel level) || event.getEntity() == null) {
+            return;
+        }
+        Player player = event.getEntity();
+        BlockPos pos = event.getPos();
+        Zone zone = ZoneManager.at(level, pos);
+        if (zone == null) {
+            return;
+        }
+        ItemStack stack = event.getItemStack();
+        boolean container = isContainer(level, pos);
+        boolean fireItem = stack.getItem() instanceof FlintAndSteelItem || stack.getItem() instanceof FireChargeItem;
+        boolean bucket = stack.getItem() instanceof BucketItem;
+        boolean claimLocked = zone.has(ZoneFlag.CLAIM) && !ZoneManager.canModify(player, zone);
+        if (claimLocked && (container || fireItem || bucket)) {
+            denyUse(event);
+            return;
+        }
+        if (zone.has(ZoneFlag.DENY_CONTAINERS) && container && !ZoneManager.canModify(player, zone) && !player.hasPermissions(2)) {
+            denyUse(event);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onProtectEntity(PlayerInteractEvent.EntityInteract event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        if (lockedDecoration(event.getEntity(), event.getTarget())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onAttackDecoration(AttackEntityEvent event) {
+        if (event.getEntity().level().isClientSide()) {
+            return;
+        }
+        if (lockedDecoration(event.getEntity(), event.getTarget())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onExplosion(ExplosionEvent.Detonate event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        event.getAffectedBlocks().removeIf(pos -> explosionBlocked(level, pos));
+        event.getAffectedEntities().removeIf(entity -> explosionBlocked(level, entity.blockPosition()));
+    }
+
+    @SubscribeEvent
+    public static void onPiston(PistonEvent.Pre event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        if (claimLocked(level, event.getPos()) || claimLocked(level, event.getFaceOffsetPos())) {
+            event.setCanceled(true);
+            return;
+        }
+        var helper = event.getStructureHelper();
+        if (helper == null || !helper.resolve()) {
+            return;
+        }
+        for (BlockPos pos : helper.getToPush()) {
+            if (claimLocked(level, pos)) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+        for (BlockPos pos : helper.getToDestroy()) {
+            if (claimLocked(level, pos)) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+    }
+
+    @SubscribeEvent
+    public static void onMobGrief(EntityMobGriefingEvent event) {
+        if (!(event.getEntity().level() instanceof ServerLevel level)) {
+            return;
+        }
+        if (claimLocked(level, event.getEntity().blockPosition())) {
+            event.setResult(Event.Result.DENY);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onFireNotify(BlockEvent.NeighborNotifyEvent event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        if (!(level.getBlockState(event.getPos()).getBlock() instanceof BaseFireBlock)) {
+            return;
+        }
+        if (claimLocked(level, event.getPos())) {
+            event.setCanceled(true);
+            level.removeBlock(event.getPos(), false);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onEnderPearl(EntityTeleportEvent.EnderPearl event) {
+        denyPlayerTeleport(event.getPlayer(), event.getPrev(), event.getTarget(), event);
+    }
+
+    @SubscribeEvent
+    public static void onChorus(EntityTeleportEvent.ChorusFruit event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            denyPlayerTeleport(player, event.getPrev(), event.getTarget(), event);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onCommandTeleport(EntityTeleportEvent.TeleportCommand event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            denyPlayerTeleport(player, event.getPrev(), event.getTarget(), event);
+        }
+    }
+
     @SubscribeEvent
     public static void onPlayerTick(TickEvent.PlayerTickEvent event) {
         if (event.phase != TickEvent.Phase.END || event.player.level().isClientSide()) {
@@ -279,6 +440,12 @@ public final class ZoneEvents {
         }
         ServerLevel level = player.serverLevel();
         Zone zone = ZoneManager.at(level, player);
+        if (zone != null && zone.has(ZoneFlag.DENY_ENTRY) && !mayPassEntry(player, zone)) {
+            pushPlayerOutside(player, zone, player.getUUID());
+            zone = ZoneManager.at(level, player);
+        } else {
+            LAST_OUTSIDE.put(player.getUUID(), player.position());
+        }
 
         GameType mode = player.gameMode.getGameModeForPlayer();
         if (mode == GameType.ADVENTURE) {
@@ -384,10 +551,15 @@ public final class ZoneEvents {
         double cz = (min.getZ() + max.getZ() + 1) * 0.5;
         double cy = Mth.clamp(player.getY(), denyZone.getFloorY(),
                 denyZone.getFloorY() + Math.max(0, denyZone.getHeight() - 1));
-        if (back != null && denyZone.contains(back.x, back.y + 0.1, back.z)) {
-            player.teleportTo(back.x, back.y, back.z);
-        } else {
-            player.teleportTo(cx, cy, cz);
+        PULLING.add(playerId);
+        try {
+            if (back != null && denyZone.contains(back.x, back.y + 0.1, back.z)) {
+                player.teleportTo(back.x, back.y, back.z);
+            } else {
+                player.teleportTo(cx, cy, cz);
+            }
+        } finally {
+            PULLING.remove(playerId);
         }
         player.setDeltaMovement(Vec3.ZERO);
         player.hurtMarked = true;
@@ -666,5 +838,114 @@ public final class ZoneEvents {
             case THORNS -> player.damageSources().thorns(player);
             case MAGIC -> player.damageSources().magic();
         };
+    }
+
+    private static boolean mayPassEntry(Player player, Zone zone) {
+        if (player.hasPermissions(2)) {
+            return true;
+        }
+        if (zone.getOwner() != null && zone.getOwner().equals(player.getUUID())) {
+            return true;
+        }
+        if (zone.roleOf(player).canBuild()) {
+            return true;
+        }
+        return zone.settings().isTrusted(player);
+    }
+
+    private static void pushPlayerOutside(ServerPlayer player, Zone zone, UUID playerId) {
+        Vec3 back = LAST_OUTSIDE.get(playerId);
+        BlockPos min = zone.getMin();
+        BlockPos max = zone.getMax();
+        double x = player.getX();
+        double y = player.getY();
+        double z = player.getZ();
+        if (back == null || zone.contains(back.x, back.y + 0.1, back.z)) {
+            double cx = (min.getX() + max.getX() + 1) * 0.5;
+            double cz = (min.getZ() + max.getZ() + 1) * 0.5;
+            double dx = x - cx;
+            double dz = z - cz;
+            if (dx == 0 && dz == 0) {
+                dx = 1;
+            }
+            double scale = Math.max(Math.abs(dx), Math.abs(dz));
+            dx /= scale;
+            dz /= scale;
+            x = cx + dx * ((max.getX() - min.getX()) * 0.5 + 1.5);
+            z = cz + dz * ((max.getZ() - min.getZ()) * 0.5 + 1.5);
+        } else {
+            x = back.x;
+            y = back.y;
+            z = back.z;
+        }
+        PULLING.add(playerId);
+        try {
+            player.teleportTo(x, y, z);
+        } finally {
+            PULLING.remove(playerId);
+        }
+        player.setDeltaMovement(Vec3.ZERO);
+        player.hurtMarked = true;
+        if (player.tickCount % 20 == 0) {
+            player.displayClientMessage(Component.translatable("message.yblk_zones.deny_entry"), true);
+        }
+    }
+
+    private static void denyPlayerTeleport(ServerPlayer player, Vec3 from, Vec3 to, EntityTeleportEvent event) {
+        if (player.hasPermissions(2) || PULLING.contains(player.getUUID())) {
+            return;
+        }
+        if (!(player.level() instanceof ServerLevel level)) {
+            return;
+        }
+        if (teleportBlocked(level, from) || teleportBlocked(level, to)) {
+            event.setCanceled(true);
+            player.displayClientMessage(Component.translatable("message.yblk_zones.deny_teleport"), true);
+        }
+    }
+
+    private static boolean teleportBlocked(ServerLevel level, Vec3 pos) {
+        Zone zone = ZoneManager.at(level, BlockPos.containing(pos));
+        return zone != null && zone.has(ZoneFlag.DENY_TELEPORT);
+    }
+
+    private static boolean inFlag(Entity entity, ZoneFlag flag) {
+        if (!(entity.level() instanceof ServerLevel level)) {
+            return false;
+        }
+        Zone zone = ZoneManager.at(level, entity.blockPosition());
+        return zone != null && zone.has(flag);
+    }
+
+    private static boolean claimLocked(ServerLevel level, BlockPos pos) {
+        Zone zone = ZoneManager.at(level, pos);
+        return zone != null && zone.has(ZoneFlag.CLAIM);
+    }
+
+    private static boolean explosionBlocked(ServerLevel level, BlockPos pos) {
+        Zone zone = ZoneManager.at(level, pos);
+        return zone != null && (zone.has(ZoneFlag.CLAIM) || zone.has(ZoneFlag.DENY_EXPLOSIONS));
+    }
+
+    private static boolean isContainer(ServerLevel level, BlockPos pos) {
+        return level.getBlockEntity(pos) instanceof BaseContainerBlockEntity
+                || level.getBlockState(pos).getMenuProvider(level, pos) != null;
+    }
+
+    private static void denyUse(PlayerInteractEvent.RightClickBlock event) {
+        event.setCanceled(true);
+        event.setUseBlock(Event.Result.DENY);
+        event.setUseItem(Event.Result.DENY);
+    }
+
+    private static boolean lockedDecoration(Player player, Entity target) {
+        if (!(target instanceof ItemFrame || target instanceof ArmorStand || target instanceof Painting)) {
+            return false;
+        }
+        if (!(player.level() instanceof ServerLevel level)) {
+            return false;
+        }
+        Zone zone = ZoneManager.at(level, target.blockPosition());
+        return zone != null && zone.has(ZoneFlag.CLAIM) && !ZoneManager.canModify(player, zone);
     }
 }

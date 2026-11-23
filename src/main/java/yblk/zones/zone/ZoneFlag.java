@@ -22,7 +22,17 @@ public enum ZoneFlag {
     /** Natural / spawner mob spawns blocked. */
     MOB_DENY_SPAWN(0x8855AA),
     /** Periodic player damage. */
-    PLAYER_DAMAGE(0xFF2222);
+    PLAYER_DAMAGE(0xFF2222),
+    /** Players cannot hit each other here. */
+    DENY_PVP(0xC43B3B),
+    /** Explosions do not break blocks or hurt entities here. */
+    DENY_EXPLOSIONS(0xE07A2F),
+    /** Containers stay shut even without a claim. */
+    DENY_CONTAINERS(0x3A7CA5),
+    /** Strangers are pushed back out. */
+    DENY_ENTRY(0x6B4C9A),
+    /** Pearls, chorus fruit, and /tp cannot cross the border. */
+    DENY_TELEPORT(0x2F6F6A);
 
     public final int colorRgb;
 
