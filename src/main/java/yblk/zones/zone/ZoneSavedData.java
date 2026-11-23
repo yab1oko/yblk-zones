@@ -1,13 +1,18 @@
 package yblk.zones.zone;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.saveddata.SavedData;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -15,6 +20,8 @@ public class ZoneSavedData extends SavedData {
     private static final String DATA_NAME = "yblk_zones";
 
     private final Map<UUID, Zone> zones = new LinkedHashMap<>();
+    /** Chunk key → zones whose bounding box touches that chunk. */
+    private final Map<Long, List<Zone>> chunkIndex = new HashMap<>();
 
     private static int zonePriority(Zone zone) {
         return zone.getPriority();
