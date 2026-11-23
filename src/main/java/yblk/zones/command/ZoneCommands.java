@@ -22,6 +22,7 @@ import yblk.zones.zone.Zone;
 import yblk.zones.zone.ZoneFlag;
 import yblk.zones.zone.ZoneLog;
 import yblk.zones.zone.ZoneManager;
+import yblk.zones.zone.ZoneExchange;
 import yblk.zones.zone.ZoneTemplates;
 import yblk.zones.init.ModItems;
 
@@ -138,6 +139,25 @@ public final class ZoneCommands {
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "zone"),
                                                 IntegerArgumentType.getInteger(ctx, "value"))))))
+                .then(Commands.literal("export")
+                        .requires(s -> s.hasPermission(2))
+                        .then(Commands.literal("all")
+                                .executes(ctx -> exportAll(ctx.getSource())))
+                        .then(Commands.argument("zone", StringArgumentType.string())
+                                .suggests(ZONE_NAMES)
+                                .executes(ctx -> exportOne(ctx.getSource(), StringArgumentType.getString(ctx, "zone")))))
+                .then(Commands.literal("import")
+                        .requires(s -> s.hasPermission(2))
+                        .then(Commands.literal("all")
+                                .executes(ctx -> importAll(ctx.getSource())))
+                        .then(Commands.argument("file", StringArgumentType.string())
+                                .suggests((ctx, builder) -> {
+                                    for (String name : yblk.zones.zone.ZoneExchange.fileNames()) {
+                                        builder.suggest(name.contains(" ") ? "\"" + name + "\"" : name);
+                                    }
+                                    return builder.buildFuture();
+                                })
+                                .executes(ctx -> importOne(ctx.getSource(), StringArgumentType.getString(ctx, "file")))))
                 .then(Commands.literal("template")
                         .then(Commands.literal("reload")
                                 .requires(s -> s.hasPermission(2))
@@ -549,6 +569,54 @@ public final class ZoneCommands {
         ZoneManager.sync(source.getLevel());
         source.sendSuccess(() -> Component.translatable("message.yblk_zones.priority_set", value), true);
         return 1;
+    }
+
+    private static int exportOne(CommandSourceStack source, String zoneName) {
+        Zone zone = resolve(source, zoneName);
+        if (zone == null) {
+            return 0;
+        }
+        try {
+            var path = ZoneExchange.exportOne(zone);
+            source.sendSuccess(() -> Component.translatable("message.yblk_zones.exported", zone.getName(), path.getFileName().toString()), true);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.translatable("message.yblk_zones.export_failed", zone.getName()));
+            return 0;
+        }
+    }
+
+    private static int exportAll(CommandSourceStack source) {
+        try {
+            var paths = ZoneExchange.exportAll(source.getLevel());
+            source.sendSuccess(() -> Component.translatable("message.yblk_zones.exported_all", paths.size()), true);
+            return paths.size();
+        } catch (Exception e) {
+            source.sendFailure(Component.translatable("message.yblk_zones.export_failed", "all"));
+            return 0;
+        }
+    }
+
+    private static int importOne(CommandSourceStack source, String file) {
+        try {
+            Zone zone = ZoneExchange.importOne(source.getLevel(), file);
+            source.sendSuccess(() -> Component.translatable("message.yblk_zones.imported", zone.getName(), zone.getId().toString()), true);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.translatable("message.yblk_zones.import_failed", file));
+            return 0;
+        }
+    }
+
+    private static int importAll(CommandSourceStack source) {
+        try {
+            var zones = ZoneExchange.importAll(source.getLevel());
+            source.sendSuccess(() -> Component.translatable("message.yblk_zones.imported_all", zones.size()), true);
+            return zones.size();
+        } catch (Exception e) {
+            source.sendFailure(Component.translatable("message.yblk_zones.import_failed", "all"));
+            return 0;
+        }
     }
 
     private static int templateReload(CommandSourceStack source) {
