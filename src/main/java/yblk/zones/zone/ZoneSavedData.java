@@ -41,24 +41,53 @@ public class ZoneSavedData extends SavedData {
 
     public void add(Zone zone) {
         zones.put(zone.getId(), zone);
+        rebuildIndex();
         setDirty();
     }
 
     public void remove(UUID id) {
         if (zones.remove(id) != null) {
+            rebuildIndex();
             setDirty();
         }
     }
 
     public void markDirty() {
+        rebuildIndex();
         setDirty();
+    }
+
+    /** Zones whose box touches this chunk or a neighboring one. Used by the mob wall. */
+    public List<Zone> near(BlockPos pos) {
+        int cx = pos.getX() >> 4;
+        int cz = pos.getZ() >> 4;
+        List<Zone> out = new ArrayList<>();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                List<Zone> list = chunkIndex.get(ChunkPos.asLong(cx + dx, cz + dz));
+                if (list != null) {
+                    for (Zone zone : list) {
+                        if (!out.contains(zone)) {
+                            out.add(zone);
+                        }
+                    }
+                }
+            }
+        }
+        return out;
     }
 
     public Zone findAt(double x, double y, double z) {
         Zone best = null;
         int bestPriority = Integer.MIN_VALUE;
         int bestVolume = Integer.MAX_VALUE;
-        for (Zone zone : zones.values()) {
+        int cx = BlockPos.containing(x, 0, z).getX() >> 4;
+        int cz = BlockPos.containing(x, 0, z).getZ() >> 4;
+        List<Zone> candidates = chunkIndex.get(ChunkPos.asLong(cx, cz));
+        if (candidates == null) {
+            candidates = List.of();
+        }
+        for (Zone zone : candidates) {
             if (zone.contains(x, y, z)) {
                 int pri = zonePriority(zone);
                 int vol = zone.sizeX() * zone.sizeY() * zone.sizeZ();
@@ -74,7 +103,7 @@ public class ZoneSavedData extends SavedData {
         }
         bestPriority = Integer.MIN_VALUE;
         bestVolume = Integer.MAX_VALUE;
-        for (Zone zone : zones.values()) {
+        for (Zone zone : candidates) {
             if (zone.containsAabb(x, y, z)) {
                 int pri = zonePriority(zone);
                 int vol = zone.sizeX() * zone.sizeY() * zone.sizeZ();
@@ -105,6 +134,24 @@ public class ZoneSavedData extends SavedData {
             Zone zone = Zone.load(list.getCompound(i));
             data.zones.put(zone.getId(), zone);
         }
+        data.rebuildIndex();
         return data;
+    }
+
+    private void rebuildIndex() {
+        chunkIndex.clear();
+        for (Zone zone : zones.values()) {
+            BlockPos min = zone.getMin();
+            BlockPos max = zone.getMax();
+            int minCx = min.getX() >> 4;
+            int maxCx = max.getX() >> 4;
+            int minCz = min.getZ() >> 4;
+            int maxCz = max.getZ() >> 4;
+            for (int cx = minCx; cx <= maxCx; cx++) {
+                for (int cz = minCz; cz <= maxCz; cz++) {
+                    chunkIndex.computeIfAbsent(ChunkPos.asLong(cx, cz), key -> new ArrayList<>()).add(zone);
+                }
+            }
+        }
     }
 }

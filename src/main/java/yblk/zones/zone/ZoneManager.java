@@ -660,16 +660,17 @@ public final class ZoneManager {
     }
 
     public static void sync(ServerLevel level) {
-        List<Zone> snapshot = new ArrayList<>(data(level).all());
-        SyncZonesPacket packet = SyncZonesPacket.of(level.dimension().location().toString(), snapshot);
         for (ServerPlayer player : level.players()) {
-            ZonesNetwork.sendToPlayer(packet, player);
+            syncTo(player);
         }
     }
 
     public static void syncTo(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
-        List<Zone> snapshot = new ArrayList<>(data(level).all());
+        List<Zone> snapshot = new ArrayList<>();
+        for (Zone zone : data(level).all()) {
+            snapshot.add(Zone.load(zone.saveFor(player)));
+        }
         ZonesNetwork.sendToPlayer(
                 SyncZonesPacket.of(level.dimension().location().toString(), snapshot),
                 player);

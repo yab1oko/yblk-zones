@@ -819,6 +819,20 @@ public final class Zone {
         return tag;
     }
 
+    /** Geometry and presentation for clients. Script text stays on the server unless the viewer is an operator. */
+    public CompoundTag saveFor(net.minecraft.world.entity.player.Player viewer) {
+        CompoundTag tag = save();
+        tag.remove("LastEventSpawnAt");
+        tag.remove("EventWave");
+        tag.remove("EventHadMobs");
+        tag.remove("EventClearStreak");
+        if (viewer == null || !viewer.hasPermissions(2)) {
+            tag.remove("Actions");
+            tag.putBoolean("AllowCommands", false);
+        }
+        return tag;
+    }
+
     public static Zone load(CompoundTag tag) {
         UUID id = tag.getUUID("Id");
         int floorY = tag.contains("FloorY") ? tag.getInt("FloorY") : tag.getInt("MinY");

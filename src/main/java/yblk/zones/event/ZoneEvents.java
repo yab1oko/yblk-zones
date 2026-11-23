@@ -706,7 +706,7 @@ public final class ZoneEvents {
             return;
         }
 
-        for (Zone zone : ZoneManager.data(level).all()) {
+        for (Zone zone : ZoneManager.data(level).near(mob.blockPosition())) {
             // --- wall: solid collision, no teleport ---
             if (zone.has(ZoneFlag.MOB_DENY_ENTRY) && deniesMob(zone, mob)) {
                 collideLikeBlock(mob, zone);
