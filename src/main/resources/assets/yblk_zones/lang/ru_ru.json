@@ -365,6 +365,8 @@
   "message.yblk_zones.too_many": "Лимит зон: %s.",
   "message.yblk_zones.not_in_zone": "Не в зоне.",
   "message.yblk_zones.not_owner": "Не твоя зона.",
+  "message.yblk_zones.need_edit_perm": "Эту зону может править оператор или игрок в творческом режиме.",
+  "message.yblk_zones.commands_op_only": "Команды в скриптах включает только оператор.",
   "message.yblk_zones.info": "%s · ур.%s · %s",
   "message.yblk_zones.renamed": "→ %s",
   "message.yblk_zones.for_sale": "Продажа: %s × %s",

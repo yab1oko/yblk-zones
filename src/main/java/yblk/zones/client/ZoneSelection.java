@@ -7,8 +7,8 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import yblk.zones.ZonesConfig;
 import yblk.zones.zone.ZoneFlag;
+import yblk.zones.zone.ZoneManager;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
@@ -66,8 +66,13 @@ public final class ZoneSelection {
         return height;
     }
 
+    public static int sizeLimit() {
+        Player player = Minecraft.getInstance().player;
+        return ZoneManager.edgeCap(player);
+    }
+
     public static void setHeight(int h) {
-        height = Mth.clamp(h, 1, ZonesConfig.maxZoneSize);
+        height = Mth.clamp(h, 1, sizeLimit());
     }
 
     public static Direction activeFace() {
@@ -599,7 +604,7 @@ public final class ZoneSelection {
         if (dx == 0 && dz == 0) {
             return false;
         }
-        int max = ZonesConfig.maxZoneSize;
+        int max = sizeLimit();
         List<BlockPos> old = new ArrayList<>(corners);
         BlockPos prev = corners.get((i0 - 1 + n) % n);
         BlockPos next = corners.get((i1 + 1) % n);
@@ -740,7 +745,7 @@ public final class ZoneSelection {
     }
 
     private static boolean moveFace(Direction face, int outwardSteps) {
-        int max = ZonesConfig.maxZoneSize;
+        int max = sizeLimit();
         // If still a simple rect (4 corners), move AABB then resync
         boolean simple = corners.size() == 4;
         if (simple) {

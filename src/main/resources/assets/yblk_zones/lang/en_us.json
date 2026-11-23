@@ -365,6 +365,8 @@
   "message.yblk_zones.too_many": "Zone limit: %s.",
   "message.yblk_zones.not_in_zone": "Not in a zone.",
   "message.yblk_zones.not_owner": "Not yours.",
+  "message.yblk_zones.need_edit_perm": "Only an operator or creative player can edit this zone.",
+  "message.yblk_zones.commands_op_only": "Only an operator can attach command scripts.",
   "message.yblk_zones.info": "%s · lv.%s · %s",
   "message.yblk_zones.renamed": "→ %s",
   "message.yblk_zones.for_sale": "Sale: %s × %s",

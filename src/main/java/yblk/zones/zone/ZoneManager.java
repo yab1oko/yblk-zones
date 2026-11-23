@@ -111,6 +111,55 @@ public final class ZoneManager {
         return isWithinSize(List.of(a, b), Math.abs(a.getY() - b.getY()) + 1);
     }
 
+    /** Operators and creative players may draw past the survival caps. Still bounded so a packet cannot allocate a world-sized polygon. */
+    public static final int OP_EDGE_CAP = 4096;
+    public static final int OP_HEIGHT_CAP = 384;
+    public static final long OP_VOLUME_CAP = 64_000_000L;
+
+    public static boolean isCreative(Player player) {
+        return player != null && (player.isCreative() || player.getAbilities().instabuild);
+    }
+
+    public static boolean mayExceedSize(Player player) {
+        return player != null && (player.hasPermissions(2) || isCreative(player));
+    }
+
+    /** Create / reshape / delete gate. Claimed-plot members are handled separately in {@link #canModify}. */
+    public static boolean mayEditZones(Player player) {
+        if (player == null) {
+            return false;
+        }
+        if (!ZonesConfig.requireCreativeOrOpToEdit) {
+            return true;
+        }
+        return player.hasPermissions(2) || isCreative(player);
+    }
+
+    public static int edgeCap(Player player) {
+        return mayExceedSize(player) ? OP_EDGE_CAP : ZonesConfig.maxZoneSize;
+    }
+
+    public static boolean isWithinSizeFor(Player player, List<BlockPos> corners, int height) {
+        if (!mayExceedSize(player)) {
+            return isWithinSize(corners, height);
+        }
+        if (corners == null || corners.size() < 2 || height < 1 || height > OP_HEIGHT_CAP) {
+            return false;
+        }
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for (BlockPos c : corners) {
+            minX = Math.min(minX, c.getX());
+            maxX = Math.max(maxX, c.getX());
+            minZ = Math.min(minZ, c.getZ());
+            maxZ = Math.max(maxZ, c.getZ());
+        }
+        if ((maxX - minX + 1) > OP_EDGE_CAP || (maxZ - minZ + 1) > OP_EDGE_CAP) {
+            return false;
+        }
+        return volumeOf(corners, height) <= OP_VOLUME_CAP;
+    }
+
     public static Zone at(ServerLevel level, BlockPos pos) {
         return data(level).findAt(pos.getX() + 0.5, pos.getY() + 0.5, pos.getZ() + 0.5);
     }
@@ -121,19 +170,19 @@ public final class ZoneManager {
 
     public static boolean canModify(Player player, Zone zone) {
         if (player == null || zone == null) {
-            return true;
+            return false;
         }
         if (player.hasPermissions(2)) {
             return true;
         }
-        if (!zone.has(ZoneFlag.CLAIM)) {
-            return true;
+        if (zone.has(ZoneFlag.CLAIM)) {
+            ZoneRole role = zone.roleOf(player);
+            if (role.canBuild()) {
+                return true;
+            }
+            return zone.settings().isTrusted(player);
         }
-        ZoneRole role = zone.roleOf(player);
-        if (role.canBuild()) {
-            return true;
-        }
-        return zone.settings().isTrusted(player);
+        return mayEditZones(player);
     }
 
     public static boolean canDelete(Player player, Zone zone) {
@@ -143,10 +192,13 @@ public final class ZoneManager {
         if (player.hasPermissions(2)) {
             return true;
         }
-        if (zone.getOwner() != null && zone.getOwner().equals(player.getUUID())) {
-            return true;
+        if (zone.has(ZoneFlag.CLAIM)) {
+            if (zone.getOwner() != null && zone.getOwner().equals(player.getUUID())) {
+                return true;
+            }
+            return zone.roleOf(player) == ZoneRole.MANAGER;
         }
-        return zone.getOwner() == null && canModify(player, zone);
+        return mayEditZones(player);
     }
 
     public static boolean canSellTransfer(Player player, Zone zone) {

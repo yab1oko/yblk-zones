@@ -197,15 +197,19 @@ public final class ZoneScriptEngine {
         if (cmd.startsWith("/")) {
             cmd = cmd.substring(1);
         }
-        if (!zone.allowCommands() && (player == null || !player.hasPermissions(2))) {
+        if (!zone.allowCommands()) {
             ZoneLog.warn("Blocked command on zone " + zone.getName() + ": " + cmd);
             return;
         }
-        CommandSourceStack source = level.getServer().createCommandSourceStack()
-                .withSuppressedOutput()
-                .withPermission(2);
-        if (player != null) {
+        CommandSourceStack source;
+        if (player != null && !player.hasPermissions(2)) {
+            source = player.createCommandSourceStack().withSuppressedOutput();
+        } else if (player != null) {
             source = player.createCommandSourceStack().withPermission(2).withSuppressedOutput();
+        } else {
+            source = level.getServer().createCommandSourceStack()
+                    .withSuppressedOutput()
+                    .withPermission(2);
         }
         level.getServer().getCommands().performPrefixedCommand(source, cmd);
     }

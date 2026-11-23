@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkEvent;
 import yblk.zones.ZonesConfig;
 import yblk.zones.script.ZoneAction;
+import yblk.zones.script.ZoneActionType;
 import yblk.zones.zone.PaymentDestination;
 import yblk.zones.zone.SaleCost;
 import yblk.zones.zone.Zone;
@@ -175,8 +176,12 @@ public record CreateZonePacket(
             if (player == null || packet.corners.size() < 2) {
                 return;
             }
-            int height = Math.max(1, Math.min(packet.height, ZonesConfig.maxZoneSize));
-            if (!ZoneManager.isWithinSize(packet.corners, height)) {
+            if (!ZoneManager.mayEditZones(player)) {
+                player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
+                return;
+            }
+            int height = Math.max(1, Math.min(packet.height, ZoneManager.edgeCap(player)));
+            if (!ZoneManager.isWithinSizeFor(player, packet.corners, height)) {
                 player.displayClientMessage(Component.translatable("message.yblk_zones.too_big",
                         ZonesConfig.maxZoneSize), true);
                 return;
@@ -205,11 +210,11 @@ public record CreateZonePacket(
             zone.setBuyCosts(packet.buyCosts);
             zone.setPaymentDestination(packet.paymentDestination());
             zone.setPriority(Math.max(0, Math.min(10, packet.priority())));
-            zone.setAllowCommands(packet.allowCommands());
+            zone.setAllowCommands(player.hasPermissions(2) && packet.allowCommands());
             zone.setEventEnabled(packet.eventEnabled());
             zone.setEventNeedsConfirm(packet.eventNeedsConfirm());
             zone.setDenyExitWhileEvent(packet.denyExitWhileEvent());
-            zone.setActions(packet.actions() == null ? List.of() : packet.actions());
+            zone.setActions(acceptedActions(player, packet.actions(), List.of()));
             if (flags.contains(ZoneFlag.MOB_BUFF) || packet.settings.harvestLevel() > 0) {
                 int mob = flags.contains(ZoneFlag.MOB_BUFF) ? packet.settings.buffAmplifier() + 1 : 0;
                 int harv = packet.settings.harvestLevel();
@@ -232,6 +237,29 @@ public record CreateZonePacket(
             }
         }
         return bits;
+    }
+
+    /** Operators may attach command scripts. Everyone else keeps existing command actions and cannot add new ones. */
+    public static List<ZoneAction> acceptedActions(ServerPlayer player, List<ZoneAction> incoming, List<ZoneAction> existing) {
+        if (player != null && player.hasPermissions(2)) {
+            return incoming == null ? List.of() : incoming;
+        }
+        List<ZoneAction> out = new ArrayList<>();
+        if (existing != null) {
+            for (ZoneAction action : existing) {
+                if (action.type() == ZoneActionType.COMMAND) {
+                    out.add(action);
+                }
+            }
+        }
+        if (incoming != null) {
+            for (ZoneAction action : incoming) {
+                if (action.type() != ZoneActionType.COMMAND) {
+                    out.add(action);
+                }
+            }
+        }
+        return out;
     }
 
     public static EnumSet<ZoneFlag> unpackFlags(int bits) {

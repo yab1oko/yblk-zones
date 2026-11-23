@@ -121,12 +121,13 @@ public record UpdateZonePacket(
                 player.displayClientMessage(Component.translatable("message.yblk_zones.not_in_zone"), true);
                 return;
             }
-            if (!ZoneManager.canModify(player, zone) && !player.hasPermissions(2)) {
-                player.displayClientMessage(Component.translatable("message.yblk_zones.not_owner"), true);
+            if (!ZoneManager.canModify(player, zone)) {
+                player.displayClientMessage(Component.translatable(
+                        zone.has(ZoneFlag.CLAIM) ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
                 return;
             }
-            int height = Math.max(1, Math.min(packet.height, ZonesConfig.maxZoneSize));
-            if (!ZoneManager.isWithinSize(packet.corners, height)) {
+            int height = Math.max(1, Math.min(packet.height, ZoneManager.edgeCap(player)));
+            if (!ZoneManager.isWithinSizeFor(player, packet.corners, height)) {
                 player.displayClientMessage(Component.translatable("message.yblk_zones.too_big",
                         ZonesConfig.maxZoneSize), true);
                 return;
@@ -145,11 +146,13 @@ public record UpdateZonePacket(
             }
             zone.setPaymentDestination(packet.paymentDestination());
             zone.setPriority(Math.max(0, Math.min(10, packet.priority())));
-            zone.setAllowCommands(packet.allowCommands());
+            if (player.hasPermissions(2)) {
+                zone.setAllowCommands(packet.allowCommands());
+            }
             zone.setEventEnabled(packet.eventEnabled());
             zone.setEventNeedsConfirm(packet.eventNeedsConfirm());
             zone.setDenyExitWhileEvent(packet.denyExitWhileEvent());
-            zone.setActions(packet.actions() == null ? List.of() : packet.actions());
+            zone.setActions(CreateZonePacket.acceptedActions(player, packet.actions(), zone.getActions()));
             if (zone.has(ZoneFlag.MOB_BUFF) || zone.settings().harvestLevel() > 0) {
                 int mob = zone.has(ZoneFlag.MOB_BUFF) ? zone.settings().buffAmplifier() + 1 : 0;
                 int harv = zone.settings().harvestLevel();

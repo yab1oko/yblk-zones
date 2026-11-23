@@ -17,6 +17,10 @@ public final class ZonesConfig {
             .comment("Max block volume (width × depth × height) of a survival-created zone.")
             .defineInRange("maxZoneVolume", 4096, 64, 2_000_000);
 
+    private static final ForgeConfigSpec.BooleanValue REQUIRE_CREATIVE_OR_OP = B
+            .comment("When true, only operators (permission 2) or creative players may create, reshape, or delete unowned zones. Claimed-plot owners keep their owner menu.")
+            .define("requireCreativeOrOpToEdit", true);
+
     private static final ForgeConfigSpec.BooleanValue DEFAULT_CREATOR_OWNS = B
             .comment("When true, the player who creates a zone becomes its owner automatically.")
             .define("defaultCreatorOwns", false);
@@ -49,6 +53,7 @@ public final class ZonesConfig {
 
     public static int maxZoneSize;
     public static int maxZoneVolume;
+    public static boolean requireCreativeOrOpToEdit;
     public static boolean defaultCreatorOwns;
     public static int defaultLeasePeriodTicks;
     public static float defaultProximityRadius;
@@ -67,6 +72,7 @@ public final class ZonesConfig {
         }
         maxZoneSize = MAX_ZONE_SIZE.get();
         maxZoneVolume = MAX_ZONE_VOLUME.get();
+        requireCreativeOrOpToEdit = REQUIRE_CREATIVE_OR_OP.get();
         defaultCreatorOwns = DEFAULT_CREATOR_OWNS.get();
         defaultLeasePeriodTicks = DEFAULT_LEASE_PERIOD_TICKS.get();
         defaultProximityRadius = DEFAULT_PROXIMITY_RADIUS.get().floatValue();

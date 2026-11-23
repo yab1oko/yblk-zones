@@ -24,6 +24,7 @@ import yblk.zones.zone.PaymentDestination;
 import yblk.zones.zone.SaleCost;
 import yblk.zones.zone.ZoneFlag;
 import yblk.zones.zone.ZoneSettings;
+import yblk.zones.zone.ZoneManager;
 import yblk.zones.zone.ZoneTemplates;
 
 import java.util.ArrayList;
@@ -1245,6 +1246,13 @@ public class ZoneCreateScreen extends Screen {
         addDetail(new HintRow(x, detailY(y), w, cmdH,
                 Component.translatable("screen.yblk_zones.allow_commands", allowCommands ? "ON" : "OFF"),
                 "screen.yblk_zones.allow_commands.hint", () -> {
+                    Minecraft mc = Minecraft.getInstance();
+                    if (mc.player == null || !mc.player.hasPermissions(2)) {
+                        if (mc.player != null) {
+                            mc.player.displayClientMessage(Component.translatable("message.yblk_zones.commands_op_only"), true);
+                        }
+                        return;
+                    }
                     allowCommands = !allowCommands;
                     rebuildRows();
                 }));
@@ -1806,6 +1814,16 @@ public class ZoneCreateScreen extends Screen {
     protected void onConfirm() {
         if (!ZoneSelection.canFinish()) {
             onCancel();
+            return;
+        }
+        Minecraft mcGate = Minecraft.getInstance();
+        if (mcGate.player != null && !ZoneManager.mayEditZones(mcGate.player)) {
+            mcGate.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
+            return;
+        }
+        if (mcGate.player != null && !ZoneManager.isWithinSizeFor(mcGate.player, ZoneSelection.corners(), ZoneSelection.height())) {
+            mcGate.player.displayClientMessage(Component.translatable("message.yblk_zones.too_big",
+                    ZoneManager.edgeCap(mcGate.player)), true);
             return;
         }
         if (saleEnabled && !saleHasItem()) {

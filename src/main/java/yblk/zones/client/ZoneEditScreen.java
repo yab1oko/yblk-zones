@@ -6,6 +6,7 @@ import yblk.zones.network.UpdateZonePacket;
 import yblk.zones.network.ZonesNetwork;
 import yblk.zones.zone.SaleCost;
 import yblk.zones.zone.Zone;
+import yblk.zones.zone.ZoneManager;
 
 import java.util.List;
 import java.util.UUID;
@@ -126,6 +127,19 @@ public class ZoneEditScreen extends ZoneCreateScreen {
 
     @Override
     protected void onConfirm() {
+        net.minecraft.client.Minecraft gate = net.minecraft.client.Minecraft.getInstance();
+        if (gate.player != null && !ZoneManager.canModify(gate.player, source)) {
+            gate.player.displayClientMessage(Component.translatable(
+                    source.has(yblk.zones.zone.ZoneFlag.CLAIM)
+                            ? "message.yblk_zones.not_owner"
+                            : "message.yblk_zones.need_edit_perm"), true);
+            return;
+        }
+        if (gate.player != null && !ZoneManager.isWithinSizeFor(gate.player, ZoneSelection.corners(), ZoneSelection.height())) {
+            gate.player.displayClientMessage(Component.translatable("message.yblk_zones.too_big",
+                    ZoneManager.edgeCap(gate.player)), true);
+            return;
+        }
         if (saleEnabled && !saleHasItem()) {
             net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
             if (mc.player != null) {
@@ -159,6 +173,14 @@ public class ZoneEditScreen extends ZoneCreateScreen {
     }
 
     private void onDelete() {
+        net.minecraft.client.Minecraft gate = net.minecraft.client.Minecraft.getInstance();
+        if (gate.player != null && !ZoneManager.canDelete(gate.player, source)) {
+            gate.player.displayClientMessage(Component.translatable(
+                    source.has(yblk.zones.zone.ZoneFlag.CLAIM)
+                            ? "message.yblk_zones.not_owner"
+                            : "message.yblk_zones.need_edit_perm"), true);
+            return;
+        }
         ZonesNetwork.CHANNEL.sendToServer(new DeleteZonePacket(zoneId));
         ZoneSelection.clear();
         onClose();
