@@ -1,9 +1,12 @@
-# CurseForge — поля проекта и загрузка
+# CurseForge — YBLK Zones
 
 **GitHub:** https://github.com/yab1oko/yblk-zones  
 На CurseForge в Source URL / Issues укажи этот адрес.
 
-Скриншоты для страницы лежат в `docs/screenshots/`:
+Единый стиль описаний: `C:\Users\r1myn\Downloads\template.md`  
+Готовый текст для вставки: `C:\Users\r1myn\Downloads\yblk-zones.md` (и копия ниже).
+
+Скриншоты лежат в `docs/screenshots/` — сначала загрузи их на CF (Images), потом замени `[TODO: … forgecdn URL]` в Description на прямые ссылки.
 
 | Файл | Что показать |
 |------|----------------|
@@ -11,36 +14,18 @@
 | `02_wand_hud.png` | Жезл и HUD подсказок над зоной |
 | `03_polygon_edit.png` | Редактирование полигональной зоны |
 
-На CurseForge: **Files → Upload images** (или вставь URL после загрузки в description).
-
 ---
 
 ## Categories (CurseForge)
 
-Выбери **primary** + до 2–3 доп. (не больше нужного):
+| Приоритет | Category |
+|-----------|----------|
+| **1 — Primary** | **Server Utility** |
+| **2** | **Map and Information** |
+| **3** | **Utility & QoL** |
+| Опционально | **Adventure and RPG** |
 
-| Приоритет | Category | Почему |
-|-----------|----------|--------|
-| **1 — Primary** | **Server Utility** | Зоны, claim, ивенты, скрипты на сервере |
-| **2** | **Map and Information** | Outline, HUD имени зоны, визуализация границ |
-| **3** | **Utility & QoL** | Редактор, шаблоны, удобные инструменты владельца |
-| Опционально | **Adventure and RPG** | Рейды / ивенты / скриптовые сценарии |
-
-**Не ставить:** Technology, World Gen, Magic, Storage, Mobs (как основную) — мод не про это.
-
-Рекомендуемый набор на форме Create project:
-
-1. Server Utility *(primary)*  
-2. Map and Information  
-3. Utility & QoL  
-
----
-
-## GitHub topics
-
-Уже можно проставить на репо:
-
-`minecraft` `minecraft-mod` `forge` `minecraft-forge` `minecraft-1-20-1` `zones` `mit-license`
+Рекомендуемый набор: Server Utility (primary) · Map and Information · Utility & QoL
 
 ---
 
@@ -54,73 +39,55 @@ Create zones. Lots of configuration options and the ability to write scripts.
 
 ## Description
 
-Сначала загрузи 3 скрина на CF, затем замени `SCREENSHOT_1_URL` / `2` / `3` на прямые ссылки на картинки.
+Копируй из **Source** (не Preview). После загрузки скринов замени три `[TODO: …]` на forgecdn URL.
 
-```html
-<p><b>YBLK Zones</b> for Minecraft <b>Forge 1.20.1</b>.</p>
-<p>Create zones. Lots of configuration options and the ability to write scripts.</p>
+````markdown
+<h1 align="center">YBLK Zones</h1>
+<p align="center"><b>Create zones. Lots of configuration options and the ability to write scripts.</b></p>
 
-<h3>Screenshots</h3>
+<p align="center">
+<code>Minecraft 1.20.1</code> · <code>Forge</code> · <code>Client & Server</code> · <code><a href="https://github.com/yab1oko/yblk-zones">GitHub</a></code>
+</p>
 
-<p><b>Zone editor</b> — flags and detailed settings</p>
-<img src="SCREENSHOT_1_URL" alt="Zone editor" width="100%"/>
+---
 
-<p><b>Zone Wand</b> — draw zones in the world</p>
-<img src="SCREENSHOT_2_URL" alt="Zone Wand HUD" width="100%"/>
+## ✨ Overview
+YBLK Zones lets you draw world areas and turn them into claims, shops, ambience pockets, or scripted events. It is built for adventure maps and servers that need more control than a simple protected region — flags, visuals, buyable plots, raids, and short scripts in one editor.
 
-<p><b>Polygon editing</b> — shape zones freely</p>
-<img src="SCREENSHOT_3_URL" alt="Polygon zone edit" width="100%"/>
+## 🧩 Features
+Use the **Zone Wand** to draw box or polygon zones in the world, then open the two-panel editor to set flags, HUD, ambience, particles, potion effects, and owner tools.
 
-<h3>Features</h3>
-<ul>
-  <li>Zone Wand — draw and edit world zones</li>
-  <li>Many flags, HUD, ambience, particles, potion effects</li>
-  <li>Buyable plots, templates, owner tools</li>
-  <li>Events / raids with waves and rewards</li>
-  <li>Scripts (on start / end / enter / exit), text editor, save &amp; import</li>
-</ul>
+<p align="center">
+<img src="[TODO: upload docs/screenshots/01_editor.png to CurseForge, paste forgecdn URL]" alt="Zone editor" width="560">
+</p>
 
-<h3>Dependencies</h3>
-<ul>
-  <li><b>Required:</b> Minecraft 1.20.1</li>
-  <li><b>Required:</b> Forge 47.x (recommended 47.4.0+)</li>
-  <li><b>Optional:</b> none</li>
-</ul>
+<p align="center">
+<img src="[TODO: upload docs/screenshots/02_wand_hud.png to CurseForge, paste forgecdn URL]" alt="Zone Wand HUD" width="560">
+</p>
 
-<p>Install Forge, drop the jar into <code>mods</code>, done.</p>
+<p align="center">
+<img src="[TODO: upload docs/screenshots/03_polygon_edit.png to CurseForge, paste forgecdn URL]" alt="Polygon zone edit" width="560">
+</p>
 
-<hr/>
+Zones can be sold as plots, saved as templates, and reused. **Events / raids** support waves, clear-to-advance, and rewards. **Scripts** run on start, end, enter, and exit — edit them in a text editor, save bundles, and import them between zones.
 
-<p><b>YBLK Zones</b> для Minecraft <b>Forge 1.20.1</b>.</p>
-<p>Создавайте зоны. Очень много настроек и возможность писать скрипты.</p>
+## 🎮 How to use
+Take the Zone Wand, mark corners (or polygon points), create the zone, then open the editor. Toggle flags on the left, tune settings and scripts on the right. For raids, set spawn rules and wave counts, then trigger On Start.
 
-<h3>Скриншоты</h3>
+<p align="center">
+<a href="https://discord.gg/tXMBWwSuRp"><img src="https://media.forgecdn.net/attachments/description/1733109/description_21a9c9c7-989f-4444-ba7f-2e16083187b8.png" alt="Join Discord" width="535"></a>
+</p>
 
-<p><b>Редактор зоны</b> — флаги и детальные настройки</p>
-<img src="SCREENSHOT_1_URL" alt="Редактор зоны" width="100%"/>
+## More mods by yab1oko
+- [Cold Weapons](https://www.curseforge.com/minecraft/mc-mods/cold-weapons)
+- [Custom Loot System (CTS)](https://www.curseforge.com/minecraft/mc-mods/custom-loot-system)
+- [YBLK Fashion](https://www.curseforge.com/minecraft/mc-mods/yblk-fashion)
+- [YBLK Features](https://www.curseforge.com/minecraft/mc-mods/yblk-features)
+- [Roleplay Materials](https://www.curseforge.com/minecraft/mc-mods/roleplay-materials)
 
-<p><b>Жезл зон</b> — рисование зон в мире</p>
-<img src="SCREENSHOT_2_URL" alt="Жезл и HUD" width="100%"/>
-
-<p><b>Полигон</b> — свободная форма зоны</p>
-<img src="SCREENSHOT_3_URL" alt="Редактирование полигона" width="100%"/>
-
-<h3>Возможности</h3>
-<ul>
-  <li>Жезл зон — рисование и редактирование</li>
-  <li>Флаги, HUD, амбиент, частицы, эффекты</li>
-  <li>Продажа участков, шаблоны, меню владельца</li>
-  <li>Ивенты / рейды с волнами и наградами</li>
-  <li>Скрипты, текстовый редактор, сохранение и импорт между зонами</li>
-</ul>
-
-<h3>Зависимости</h3>
-<ul>
-  <li><b>Обязательно:</b> Minecraft 1.20.1</li>
-  <li><b>Обязательно:</b> Forge 47.x (лучше 47.4.0+)</li>
-  <li><b>Опционально:</b> нет</li>
-</ul>
-```
+## Feedback
+Bugs, balance notes, and ideas: join the Discord — [yab1oko mods](https://discord.gg/tXMBWwSuRp).
+````
 
 ---
 
@@ -140,5 +107,5 @@ Create zones. Lots of configuration options and the ability to write scripts.
 2. **License:** MIT  
 3. **Icon:** `src/main/resources/logo.png`  
 4. Загрузить скрины из `docs/screenshots/`  
-5. Вставить Description (с URL картинок)  
+5. Вставить Description из блока выше (с URL картинок)  
 6. **File:** `build/libs/yblk_zones-1.20.1-1.0.0.jar`

@@ -7,6 +7,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import yblk.zones.zone.Zone;
+import yblk.zones.zone.ZoneFlag;
+import yblk.zones.zone.ZoneManager;
 
 import java.util.UUID;
 
@@ -101,6 +103,10 @@ public final class ClientWand {
         if (mc.player == null) {
             return;
         }
+        if (!ZoneManager.mayEditZones(mc.player)) {
+            mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
+            return;
+        }
         if (ZoneSelection.hasPreview()) {
             mc.player.displayClientMessage(Component.translatable("message.yblk_zones.draft_exists"), true);
             return;
@@ -144,6 +150,11 @@ public final class ClientWand {
         }
         Zone existing = findExistingZone(mc);
         if (existing != null) {
+            if (!ZoneManager.canModify(mc.player, existing)) {
+                mc.player.displayClientMessage(Component.translatable(
+                        existing.has(ZoneFlag.CLAIM) ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
+                return;
+            }
             if (existing.isForSale()
                     && (existing.getOwner() == null || !existing.getOwner().equals(mc.player.getUUID()))) {
                 // Owner menu not applicable; open buy tip via edit only for owner/admin
@@ -167,6 +178,11 @@ public final class ClientWand {
         }
         Zone existing = findExistingZone(mc);
         if (existing != null) {
+            if (!ZoneManager.canModify(mc.player, existing)) {
+                mc.player.displayClientMessage(Component.translatable(
+                        existing.has(ZoneFlag.CLAIM) ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
+                return;
+            }
             ZoneSelection.loadFromZone(existing.getId(), existing.getCorners(),
                     existing.getFloorY(), existing.getHeight());
             ZoneSelection.resumePlacing();

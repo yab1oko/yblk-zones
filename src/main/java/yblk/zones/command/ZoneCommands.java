@@ -103,6 +103,15 @@ public final class ZoneCommands {
         dispatcher.register(root);
     }
 
+    private static boolean denyEdit(CommandSourceStack source, Zone zone) {
+        ServerPlayer player = source.getPlayer();
+        if (player != null && !ZoneManager.canModify(player, zone)) {
+            source.sendFailure(Component.translatable("message.yblk_zones.need_edit_perm"));
+            return true;
+        }
+        return false;
+    }
+
     private static Zone requireZone(CommandSourceStack source) {
         ServerPlayer player = source.getPlayer();
         if (player == null) {
@@ -136,6 +145,9 @@ public final class ZoneCommands {
             return 0;
         }
         boolean on = value.equalsIgnoreCase("true") || value.equalsIgnoreCase("on") || value.equals("1");
+        if (denyEdit(source, zone)) {
+            return 0;
+        }
         zone.setFlag(flag, on);
         ZoneManager.data(source.getLevel()).markDirty();
         ZoneManager.sync(source.getLevel());
@@ -167,6 +179,9 @@ public final class ZoneCommands {
             source.sendFailure(Component.translatable("message.yblk_zones.not_in_zone"));
             return 0;
         }
+        if (denyEdit(source, zone)) {
+            return 0;
+        }
         zone.setLevel(level);
         ZoneManager.data(source.getLevel()).markDirty();
         ZoneManager.sync(source.getLevel());
@@ -181,6 +196,9 @@ public final class ZoneCommands {
         }
         if (ForgeRegistries.ITEMS.getValue(itemId) == null) {
             source.sendFailure(Component.literal("Unknown item"));
+            return 0;
+        }
+        if (denyEdit(source, zone)) {
             return 0;
         }
         zone.setBuyCost(itemId.toString(), count);
@@ -237,6 +255,11 @@ public final class ZoneCommands {
         Zone zone = requireZone(source);
         if (zone == null) {
             source.sendFailure(Component.translatable("message.yblk_zones.not_in_zone"));
+            return 0;
+        }
+        ServerPlayer actor = source.getPlayer();
+        if (actor != null && !ZoneManager.canDelete(actor, zone)) {
+            source.sendFailure(Component.translatable("message.yblk_zones.need_edit_perm"));
             return 0;
         }
         UUID id = zone.getId();
@@ -344,6 +367,9 @@ public final class ZoneCommands {
             source.sendFailure(Component.translatable("message.yblk_zones.not_in_zone"));
             return 0;
         }
+        if (denyEdit(source, zone)) {
+            return 0;
+        }
         zone.setPriority(value);
         ZoneManager.data(source.getLevel()).markDirty();
         ZoneManager.sync(source.getLevel());
@@ -367,6 +393,9 @@ public final class ZoneCommands {
         }
         if (ForgeRegistries.MOB_EFFECTS.getValue(effectId) == null) {
             source.sendFailure(Component.translatable("message.yblk_zones.unknown_effect", effectId));
+            return 0;
+        }
+        if (denyEdit(source, zone)) {
             return 0;
         }
         EffectEntry entry = EffectEntry.of(effectId.toString());

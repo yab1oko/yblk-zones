@@ -1,0 +1,16 @@
+---
+description: YBLK Zones project rules
+alwaysApply: true
+---
+Project: Minecraft Forge 1.20.1 mod "YBLK Zones" (modid `yblk_zones`, package `yblk.zones`, lang `assets/yblk_zones/lang/en_us.json` + `ru_ru.json`), Java 17. Author yab1oko. Current release is 1.0.0; this update is 1.1.0.
+
+Rules:
+- Before editing, read the related existing classes and follow their architecture (`Zone`, `ZoneManager`, `ZoneSavedData`, `ZoneSettings`, `ZoneFlag`, `ZoneEvents`, `ZoneCommands`, packets in `yblk.zones.network`, `ZonesConfig`, client wand/editor). Do not invent a parallel region system.
+- Verify Forge/Minecraft APIs against decompiled sources / Gradle-cache jars. Never invent methods, fields, or packet APIs.
+- Implement every requested stage in this one run. While working on a stage, stay within that stage's files; do not rewrite unrelated systems. After each stage: `./gradlew build`, fix errors, commit, continue. Do not stop for review between stages. Stop mid-run only if truly blocked.
+- Never remove or simplify existing features (wand drawing, polygons, flags, ambience, HUD, plots/leases, roles, events/raids, scripts, templates, owner menu, commands that already work). Old worlds and zone NBT must keep working; migrate new keys with safe defaults (new flags default OFF).
+- Append any new `ZoneFlag` values at the **end** of the enum. `CreateZonePacket.packFlags` / `unpackFlags` use ordinal bits — inserting a flag in the middle will break existing clients and worlds.
+- On a dedicated server, no client classes may be loaded. Packets and gameplay rules are enforced server-side; the client only renders and sends requests.
+- Every user-facing string goes through translation keys in BOTH `en_us.json` and `ru_ru.json` (UTF-8, no BOM, no unsupported glyphs). Keep the two files in sync. Leave room for longer Russian labels on buttons.
+- No placeholders, TODOs, or stubs in shipped code.
+- When the last stage is done and the build passes, write one final report for all stages (done / skipped / unsure, files, how to test). Do not start unrequested extra work.
