@@ -89,9 +89,17 @@ public final class ZoneClientEvents {
         if (mc.gameMode.getPlayerMode() != GameType.ADVENTURE) {
             return;
         }
-        Zone zone = ClientZones.at(player.getX(), player.getY() + 0.1, player.getZ());
-        boolean allow = zone != null
-                && (zone.has(ZoneFlag.ADVENTURE_BUILD) || zone.has(ZoneFlag.ADVENTURE_BREAK));
+        boolean allow = false;
+        var look = player.pick(player.getBlockReach(), 0.0F, false);
+        if (look instanceof net.minecraft.world.phys.BlockHitResult block
+                && block.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            Zone broken = ClientZones.at(block.getBlockPos().getX() + 0.5,
+                    block.getBlockPos().getY() + 0.5, block.getBlockPos().getZ() + 0.5);
+            var place = block.getBlockPos().relative(block.getDirection());
+            Zone placed = ClientZones.at(place.getX() + 0.5, place.getY() + 0.5, place.getZ() + 0.5);
+            allow = (broken != null && broken.has(ZoneFlag.ADVENTURE_BREAK))
+                    || (placed != null && placed.has(ZoneFlag.ADVENTURE_BUILD));
+        }
         if (player.getAbilities().mayBuild != allow) {
             player.getAbilities().mayBuild = allow;
         }

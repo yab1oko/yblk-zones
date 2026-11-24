@@ -889,6 +889,21 @@ public final class ZoneSelection {
             maxBX = Math.max(maxBX, c.getX());
             maxBZ = Math.max(maxBZ, c.getZ());
         }
+        int minBX = Integer.MAX_VALUE;
+        int minBZ = Integer.MAX_VALUE;
+        for (BlockPos c : zoneCorners) {
+            minBX = Math.min(minBX, c.getX());
+            minBZ = Math.min(minBZ, c.getZ());
+        }
+        if (minBX == maxBX || minBZ == maxBZ) {
+            int x1 = maxBX + 1;
+            int z1 = maxBZ + 1;
+            corners.add(new BlockPos(minBX, floorY, minBZ));
+            corners.add(new BlockPos(x1, floorY, minBZ));
+            corners.add(new BlockPos(x1, floorY, z1));
+            corners.add(new BlockPos(minBX, floorY, z1));
+            return;
+        }
         for (BlockPos c : zoneCorners) {
             int ex = c.getX() == maxBX ? c.getX() + 1 : c.getX();
             int ez = c.getZ() == maxBZ ? c.getZ() + 1 : c.getZ();

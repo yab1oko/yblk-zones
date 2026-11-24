@@ -103,7 +103,7 @@ public final class ClientWand {
         if (mc.player == null) {
             return;
         }
-        if (!ZoneManager.mayEditZones(mc.player)) {
+        if (!ZoneManager.mayWand(mc.player, ZoneManager.WandPower.CREATE)) {
             mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
             return;
         }
@@ -178,9 +178,13 @@ public final class ClientWand {
         }
         Zone existing = findExistingZone(mc);
         if (existing != null) {
-            if (!ZoneManager.canModify(mc.player, existing)) {
+            boolean claim = existing.has(ZoneFlag.CLAIM);
+            boolean allowed = claim
+                    ? ZoneManager.canModify(mc.player, existing)
+                    : ZoneManager.mayWand(mc.player, ZoneManager.WandPower.RESHAPE);
+            if (!allowed) {
                 mc.player.displayClientMessage(Component.translatable(
-                        existing.has(ZoneFlag.CLAIM) ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
+                        claim ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
                 return;
             }
             ZoneSelection.loadFromZone(existing.getId(), existing.getCorners(),
@@ -201,6 +205,10 @@ public final class ClientWand {
             mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_draft"), true);
             return;
         }
+        if (!ZoneManager.mayWand(mc.player, ZoneManager.WandPower.RESHAPE)) {
+            mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
+            return;
+        }
         if (ZoneSelection.addCornerSplit()) {
             mc.player.displayClientMessage(Component.translatable("message.yblk_zones.corner_added",
                     ZoneSelection.corners().size()), true);
@@ -216,6 +224,10 @@ public final class ClientWand {
         }
         if (!ZoneSelection.hasPreview()) {
             mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_draft"), true);
+            return;
+        }
+        if (!ZoneManager.mayWand(mc.player, ZoneManager.WandPower.RESHAPE)) {
+            mc.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
             return;
         }
         if (ZoneSelection.deleteHoveredCorner()) {

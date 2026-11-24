@@ -127,6 +127,33 @@ public final class ZoneManager {
         return player != null && (player.hasPermissions(2) || isCreative(player));
     }
 
+    /** One wand ability that a survival player can be granted in config. */
+    public enum WandPower {
+        CREATE, RESHAPE, SETTINGS, DELETE
+    }
+
+    /**
+     * Operators and creative players always pass. When the global lock is on, a survival player
+     * passes only the abilities turned on in config.
+     */
+    public static boolean mayWand(Player player, WandPower power) {
+        if (player == null || power == null) {
+            return false;
+        }
+        if (player.hasPermissions(2) || isCreative(player)) {
+            return true;
+        }
+        if (!ZonesConfig.requireCreativeOrOpToEdit) {
+            return true;
+        }
+        return switch (power) {
+            case CREATE -> ZonesConfig.survivalCreate;
+            case RESHAPE -> ZonesConfig.survivalReshape;
+            case SETTINGS -> ZonesConfig.survivalSettings;
+            case DELETE -> ZonesConfig.survivalDelete;
+        };
+    }
+
     /** Create / reshape / delete gate. Claimed-plot members are handled separately in {@link #canModify}. */
     public static boolean mayEditZones(Player player) {
         if (player == null) {
@@ -185,7 +212,7 @@ public final class ZoneManager {
             }
             return zone.settings().isTrusted(player);
         }
-        return mayEditZones(player);
+        return mayWand(player, WandPower.SETTINGS);
     }
 
     public static boolean canDelete(Player player, Zone zone) {
@@ -201,7 +228,7 @@ public final class ZoneManager {
             }
             return zone.roleOf(player) == ZoneRole.MANAGER;
         }
-        return mayEditZones(player);
+        return mayWand(player, WandPower.DELETE);
     }
 
     public static boolean canSellTransfer(Player player, Zone zone) {

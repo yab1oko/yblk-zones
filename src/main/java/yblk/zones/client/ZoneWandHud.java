@@ -4,13 +4,11 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
-import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
-import org.lwjgl.glfw.GLFW;
 import yblk.zones.ZonesMod;
 
 /**
@@ -67,7 +65,8 @@ public final class ZoneWandHud {
             }
         }
 
-        String alt = Component.translatable("hud.yblk_zones.chip_alt").getString();
+        String alt = ZoneKeybinds.RESIZE.getTranslatedKeyMessage().getString()
+                + " " + Component.translatable("hud.yblk_zones.chip_alt").getString();
         String size = draft
                 ? ZoneSelection.sizeX() + "×" + ZoneSelection.height() + "×" + ZoneSelection.sizeZ()
                 : "";
@@ -97,13 +96,13 @@ public final class ZoneWandHud {
     }
 
     private static int chipWidth(net.minecraft.client.gui.Font font, String id) {
-        String label = Component.translatable("hud.yblk_zones.chip_" + id).getString();
+        String label = chipText(id);
         return font.width(label) + 10;
     }
 
     private static void drawChip(GuiGraphics g, net.minecraft.client.gui.Font font,
                                  int x, int y, int w, int h, String id) {
-        String label = Component.translatable("hud.yblk_zones.chip_" + id).getString();
+        String label = chipText(id);
         g.fill(x, y, x + w, y + h, CHIP);
         g.fill(x, y, x + 2, y + h, ACCENT);
         // Key letter tint strip on the left of the text
@@ -126,32 +125,43 @@ public final class ZoneWandHud {
         return out;
     }
 
-    @SubscribeEvent(priority = EventPriority.HIGHEST)
-    public static void onKey(InputEvent.Key event) {
-        if (event.getAction() != GLFW.GLFW_PRESS) {
+    private static String chipText(String id) {
+        String action = Component.translatable("hud.yblk_zones.chip_" + id).getString();
+        var key = ZoneKeybinds.forChip(id);
+        if (key == null) {
+            return action;
+        }
+        return key.getTranslatedKeyMessage().getString() + " " + action;
+    }
+
+    @SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
             return;
         }
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.screen != null) {
             return;
         }
-        int key = event.getKey();
-        if (key == GLFW.GLFW_KEY_O) {
+        if (ZoneKeybinds.OWNER.consumeClick()) {
             ClientWand.openOwnerMenuFromHud();
-            return;
         }
         if (!ClientWand.holdingWand()) {
             return;
         }
-        if (key == GLFW.GLFW_KEY_R) {
+        if (ZoneKeybinds.SETTINGS.consumeClick()) {
             ClientWand.openSettingsFromHud();
-        } else if (key == GLFW.GLFW_KEY_G) {
+        }
+        if (ZoneKeybinds.EDIT.consumeClick()) {
             ClientWand.beginEditFromHud();
-        } else if (key == GLFW.GLFW_KEY_N) {
+        }
+        if (ZoneKeybinds.NEW_ZONE.consumeClick()) {
             ClientWand.startNewZone();
-        } else if (key == GLFW.GLFW_KEY_C) {
+        }
+        if (ZoneKeybinds.ADD_CORNER.consumeClick()) {
             ClientWand.addCornerFromHud();
-        } else if (key == GLFW.GLFW_KEY_X) {
+        }
+        if (ZoneKeybinds.REMOVE_CORNER.consumeClick()) {
             ClientWand.deleteCornerFromHud();
         }
     }

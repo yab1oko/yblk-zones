@@ -4,12 +4,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import yblk.zones.ZonesConfig;
@@ -27,9 +30,16 @@ import yblk.zones.zone.ZoneSettings;
 import yblk.zones.zone.ZoneManager;
 import yblk.zones.zone.ZoneTemplates;
 
+import yblk.zones.client.ui.ToggleSwitch;
+
+import net.minecraft.Util;
+
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Two-panel create / edit menu: scrollable nav left, detail right. */
 public class ZoneCreateScreen extends Screen {
@@ -46,7 +56,7 @@ public class ZoneCreateScreen extends Screen {
     protected static final int OFF = 0xFF3A3A44;
     protected static final int FOOTER = 0xF00E0E14;
     protected static final int NAV_W = 230;
-    protected static final int TOGGLE_STRIP = 34;
+    protected static final int TOGGLE_STRIP = 42;
 
     protected enum NavId { FLAG, GENERAL, EVENT, AMBIENCE, EFFECTS, SCRIPTS, SALE, TEMPLATE }
 
@@ -62,6 +72,21 @@ public class ZoneCreateScreen extends Screen {
     protected ZoneFlag navFlag = rememberedFlag;
     protected int navScroll;
     protected int detailScroll;
+    private int navScrollTarget;
+    private int detailScrollTarget;
+    private float navScrollF;
+    private float detailScrollF;
+    private float detailSlide;
+    private int draggingBar;
+    private long easeAt;
+    private double pointerX = -1;
+    private double pointerY = -1;
+    private ZoneFlag hoveredFlag;
+    private String hoveredTip;
+    private int flagHoverTicks;
+    private final Map<String, Float> toggleAnim = new HashMap<>();
+    private final Map<AbstractWidget, Integer> navLayoutY = new IdentityHashMap<>();
+    private final Map<AbstractWidget, Integer> detailLayoutY = new IdentityHashMap<>();
     protected int navContentHeight;
     protected int detailContentHeight;
     protected boolean saleExpanded;
@@ -99,7 +124,7 @@ public class ZoneCreateScreen extends Screen {
     }
 
     protected int headerH() {
-        return 40;
+        return 52;
     }
 
     protected int footerH() {
@@ -142,7 +167,7 @@ public class ZoneCreateScreen extends Screen {
         panelX = (width - panelW) / 2;
         panelY = (height - panelH) / 2;
 
-        nameBox = new EditBox(font, panelX + 10, panelY + 22, panelW - 20, 16,
+        nameBox = new EditBox(font, panelX + 10, panelY + 30, panelW - 20, 14,
                 Component.translatable("screen.yblk_zones.name"));
         nameBox.setMaxLength(48);
         if (nameBox.getValue().isEmpty()) {
@@ -254,6 +279,8 @@ public class ZoneCreateScreen extends Screen {
         }
         navDynamic.clear();
         detailDynamic.clear();
+        navLayoutY.clear();
+        detailLayoutY.clear();
         fieldBoxes.clear();
         saleCountBoxes.clear();
 
@@ -363,9 +390,10 @@ public class ZoneCreateScreen extends Screen {
     }
 
     private int buildFlagDetail(ZoneFlag flag, int y, int x, int w, int rowH, int gap) {
+        addDetail(new FlagHintBox(x, detailY(y), w, 48, flag));
+        y += 48 + gap;
         if (!flagHasSubsettings(flag)) {
-            addDetail(new FlagHintBox(x, detailY(y), w, 48, flag));
-            return y + 48 + gap;
+            return y;
         }
         return switch (flag) {
             case VISIBLE -> buildVisibleDetail(y, x, w, rowH, gap);
@@ -548,6 +576,30 @@ public class ZoneCreateScreen extends Screen {
         String team = settings.trustedTeam().isEmpty() ? "—" : settings.trustedTeam();
         addDetail(new ActionButton(x, detailY(y), w, rowH,
                 Component.translatable("screen.yblk_zones.trust_team", team), this::cycleTeam));
+        y += rowH + gap;
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_break", settings.claimDenyBreak(),
+                settings::setClaimDenyBreak);
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_place", settings.claimDenyPlace(),
+                settings::setClaimDenyPlace);
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_block_use", settings.claimDenyBlockUse(),
+                settings::setClaimDenyBlockUse);
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_entity_use", settings.claimDenyEntityUse(),
+                settings::setClaimDenyEntityUse);
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_attack", settings.claimDenyAttack(),
+                settings::setClaimDenyAttack);
+        y = claimRule(y, x, w, rowH, gap, "screen.yblk_zones.claim_hurt", settings.claimDenyHurt(),
+                settings::setClaimDenyHurt);
+        return y;
+    }
+
+    private int claimRule(int y, int x, int w, int rowH, int gap, String key, boolean deny,
+                          java.util.function.Consumer<Boolean> set) {
+        String state = Component.translatable(deny ? "screen.yblk_zones.claim_no" : "screen.yblk_zones.claim_yes")
+                .getString();
+        addDetail(new ActionButton(x, detailY(y), w, rowH, Component.translatable(key, state), () -> {
+            set.accept(!deny);
+            rebuildRows();
+        }));
         return y + rowH + gap;
     }
 
@@ -1215,7 +1267,7 @@ public class ZoneCreateScreen extends Screen {
         fanfare.setFloatArg(1.0F);
         draftActions.add(fanfare);
 
-        detailScroll = 0;
+        snapDetail();
         nav = NavId.SCRIPTS;
         rememberNav();
         Minecraft.getInstance().execute(() -> {
@@ -1431,7 +1483,7 @@ public class ZoneCreateScreen extends Screen {
     private void selectFlag(ZoneFlag flag) {
         nav = NavId.FLAG;
         navFlag = flag;
-        detailScroll = 0;
+        snapDetail();
         rememberNav();
         rebuildRows();
     }
@@ -1439,8 +1491,100 @@ public class ZoneCreateScreen extends Screen {
     /** Switch left-nav section and reset detail scroll so top buttons stay clickable. */
     protected void selectNav(NavId id) {
         nav = id;
-        detailScroll = 0;
+        snapDetail();
         rememberNav();
+    }
+
+    private void snapDetail() {
+        detailScroll = 0;
+        detailScrollTarget = 0;
+        detailScrollF = 0;
+        detailSlide = 10f;
+    }
+
+    private void easeScrollFrame() {
+        long now = Util.getMillis();
+        float dt = easeAt == 0L ? 0.016F : Math.min(0.05F, (now - easeAt) / 1000F);
+        easeAt = now;
+        float k = 1F - (float) Math.exp(-18F * dt);
+        navScrollF = Mth.lerp(k, navScrollF, navScrollTarget);
+        detailScrollF = Mth.lerp(k, detailScrollF, detailScrollTarget);
+        if (Math.abs(navScrollF - navScrollTarget) < 0.04F) {
+            navScrollF = navScrollTarget;
+        }
+        if (Math.abs(detailScrollF - detailScrollTarget) < 0.04F) {
+            detailScrollF = detailScrollTarget;
+        }
+        detailSlide = detailSlide <= 0.05F ? 0F : detailSlide * (float) Math.exp(-14F * dt);
+        int nextNav = Math.round(navScrollF);
+        int nextDetail = Math.round(detailScrollF);
+        if (nextNav != navScroll || nextDetail != detailScroll) {
+            navScroll = nextNav;
+            detailScroll = nextDetail;
+            applyScroll();
+        }
+    }
+
+    private void trackFlagHover() {
+        String under = null;
+        ZoneFlag underFlag = null;
+        for (AbstractWidget w : navDynamic) {
+            if (w instanceof NavRow row && row.visible
+                    && pointerX >= row.getX() && pointerX < row.getX() + row.getWidth()
+                    && pointerY >= row.getY() && pointerY < row.getY() + row.getHeight()) {
+                under = tipKey(row);
+                underFlag = row.flag;
+                break;
+            }
+        }
+        if (under != null && under.equals(hoveredTip)) {
+            if (flagHoverTicks < 40) {
+                flagHoverTicks++;
+            }
+        } else {
+            hoveredTip = under;
+            hoveredFlag = underFlag;
+            flagHoverTicks = 0;
+        }
+    }
+
+    private static String tipKey(NavRow row) {
+        if (row.flag != null) {
+            return "flag.yblk_zones." + row.flag.name().toLowerCase(java.util.Locale.ROOT) + ".desc";
+        }
+        return switch (row.navId) {
+            case AMBIENCE -> "screen.yblk_zones.section_ambience.hint";
+            case EVENT -> "screen.yblk_zones.section_event.hint";
+            case GENERAL -> "screen.yblk_zones.section_general.hint";
+            case TEMPLATE -> "screen.yblk_zones.section_template.hint";
+            case EFFECTS -> "screen.yblk_zones.section_effects.hint";
+            case SCRIPTS -> "screen.yblk_zones.section_scripts.hint";
+            case SALE -> "screen.yblk_zones.section_sale.hint";
+            case FLAG -> null;
+        };
+    }
+
+    private void applyScroll() {
+        int top = contentTop();
+        int bot = contentBottom();
+        for (AbstractWidget w : navDynamic) {
+            Integer layout = navLayoutY.get(w);
+            if (layout != null) {
+                w.setY(layout - navScroll);
+            }
+            boolean show = w.getY() + w.getHeight() > top && w.getY() < bot;
+            w.visible = show;
+            w.active = show;
+        }
+        for (AbstractWidget w : detailDynamic) {
+            Integer layout = detailLayoutY.get(w);
+            if (layout != null) {
+                w.setY(layout - detailScroll);
+            }
+            boolean show = w.getY() + w.getHeight() > top && w.getY() < bot;
+            w.visible = show;
+            w.active = show;
+        }
     }
 
     private void toggleFlag(ZoneFlag flag) {
@@ -1647,11 +1791,13 @@ public class ZoneCreateScreen extends Screen {
     }
 
     protected void addNav(AbstractWidget w) {
+        navLayoutY.put(w, w.getY() + navScroll);
         navDynamic.add(w);
         addRenderableWidget(w);
     }
 
     protected void addDetail(AbstractWidget w) {
+        detailLayoutY.put(w, w.getY() + detailScroll);
         detailDynamic.add(w);
         addRenderableWidget(w);
     }
@@ -1660,6 +1806,7 @@ public class ZoneCreateScreen extends Screen {
     public void tick() {
         super.tick();
         nameBox.tick();
+        trackFlagHover();
         for (EditBox box : saleCountBoxes) {
             box.tick();
         }
@@ -1682,7 +1829,68 @@ public class ZoneCreateScreen extends Screen {
                 return true;
             }
         }
+        if (button == 0 && beginBarDrag(mouseX, mouseY)) {
+            return true;
+        }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingBar != 0 && button == 0) {
+            dragBar(mouseY);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0) {
+            draggingBar = 0;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private boolean beginBarDrag(double mouseX, double mouseY) {
+        int view = contentBottom() - contentTop();
+        if (navContentHeight > view && hitBar(mouseX, mouseY, panelX + NAV_W - 5, navScroll, navContentHeight, view)) {
+            draggingBar = 1;
+            dragBar(mouseY);
+            return true;
+        }
+        if (detailContentHeight > view && hitBar(mouseX, mouseY, panelX + panelW - 5, detailScroll, detailContentHeight, view)) {
+            draggingBar = 2;
+            dragBar(mouseY);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean hitBar(double mouseX, double mouseY, int barX, int scroll, int contentHeight, int view) {
+        int barH = Math.max(12, view * view / contentHeight);
+        int barY = contentTop() + (int) ((view - barH) * (scroll / (float) Math.max(1, contentHeight - view)));
+        return mouseX >= barX - 3 && mouseX <= barX + 7 && mouseY >= barY && mouseY <= barY + barH;
+    }
+
+    private void dragBar(double mouseY) {
+        int view = contentBottom() - contentTop();
+        boolean nav = draggingBar == 1;
+        int content = nav ? navContentHeight : detailContentHeight;
+        int max = Math.max(1, content - view);
+        int barH = Math.max(12, view * view / Math.max(content, 1));
+        double t = (mouseY - contentTop() - barH / 2.0) / Math.max(1, view - barH);
+        int next = Mth.clamp((int) Math.round(t * max), 0, max);
+        if (nav) {
+            navScrollTarget = next;
+            navScrollF = next;
+            navScroll = next;
+        } else {
+            detailScrollTarget = next;
+            detailScrollF = next;
+            detailScroll = next;
+        }
+        rebuildRows();
     }
 
     @Override
@@ -1707,13 +1915,11 @@ public class ZoneCreateScreen extends Screen {
             int view = contentBottom() - contentTop();
             if (mouseX < panelX + NAV_W) {
                 int maxScroll = Math.max(0, navContentHeight - view);
-                navScroll = Mth.clamp(navScroll - (int) (delta * 16), 0, maxScroll);
-                rebuildRows();
+                navScrollTarget = Mth.clamp(navScrollTarget - (int) (delta * 18), 0, maxScroll);
                 return true;
             }
             int maxScroll = Math.max(0, detailContentHeight - view);
-            detailScroll = Mth.clamp(detailScroll - (int) (delta * 16), 0, maxScroll);
-            rebuildRows();
+            detailScrollTarget = Mth.clamp(detailScrollTarget - (int) (delta * 18), 0, maxScroll);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, delta);
@@ -1730,12 +1936,15 @@ public class ZoneCreateScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        pointerX = mouseX;
+        pointerY = mouseY;
+        easeScrollFrame();
         renderBackground(g);
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL);
         drawGradientBorder(g, panelX, panelY, panelW, panelH, ACCENT, ACCENT_BOTTOM);
 
         g.drawString(font, title, panelX + 10, panelY + 6, TEXT, false);
-        g.drawString(font, Component.translatable("screen.yblk_zones.name"), panelX + 10, panelY + 14, MUTED, false);
+        g.drawString(font, Component.translatable("screen.yblk_zones.name"), panelX + 10, panelY + 18, MUTED, false);
 
         g.fill(panelX + NAV_W, contentTop(), panelX + NAV_W + 1, contentBottom(), PANEL_EDGE);
         g.fill(panelX, contentBottom(), panelX + panelW, panelY + panelH, FOOTER);
@@ -1744,19 +1953,25 @@ public class ZoneCreateScreen extends Screen {
         int view = contentBottom() - contentTop();
 
         g.enableScissor(panelX + 2, contentTop(), panelX + NAV_W - 1, contentBottom());
+        g.pose().pushPose();
+        g.pose().translate(0.0D, navScroll - navScrollF, 0.0D);
         for (AbstractWidget w : navDynamic) {
             if (w.visible) {
                 w.render(g, mouseX, mouseY, partialTick);
             }
         }
+        g.pose().popPose();
         g.disableScissor();
 
         g.enableScissor(panelX + NAV_W + 2, contentTop(), panelX + panelW - 2, contentBottom());
+        g.pose().pushPose();
+        g.pose().translate(0.0D, detailScroll - detailScrollF + detailSlide, 0.0D);
         for (AbstractWidget w : detailDynamic) {
             if (w.visible) {
                 w.render(g, mouseX, mouseY, partialTick);
             }
         }
+        g.pose().popPose();
         g.disableScissor();
 
         nameBox.render(g, mouseX, mouseY, partialTick);
@@ -1765,22 +1980,43 @@ public class ZoneCreateScreen extends Screen {
         }
 
         if (navContentHeight > view) {
-            drawScrollBar(g, panelX + NAV_W - 5, navScroll, navContentHeight, view);
-            if (navScroll > 0) {
-                g.drawString(font, "^", panelX + NAV_W - 12, contentTop() + 1, ACCENT, false);
-            }
-            if (navScroll + view < navContentHeight) {
-                g.drawString(font, "v", panelX + NAV_W - 12, contentBottom() - 10, ACCENT, false);
-            }
+            drawScrollBar(g, panelX + NAV_W - 5, navScrollF, navContentHeight, view);
         }
         if (detailContentHeight > view) {
-            drawScrollBar(g, panelX + panelW - 5, detailScroll, detailContentHeight, view);
+            drawScrollBar(g, panelX + panelW - 5, detailScrollF, detailContentHeight, view);
+        }
+        if (hoveredTip != null && flagHoverTicks >= 14) {
+            g.renderTooltip(font, Component.translatable(hoveredTip), (int) pointerX, (int) pointerY);
         }
     }
 
-    private void drawScrollBar(GuiGraphics g, int barX, int scroll, int contentHeight, int view) {
+    /** Glyphs the vanilla font draws as a tiny mark get a full 7px icon instead. */
+    private static boolean paintMark(GuiGraphics g, ZoneFlag flag, int x, int y, int color) {
+        if (flag == ZoneFlag.CLAIM) {
+            g.fill(x, y + 6, x + 7, y + 7, color);
+            g.fill(x, y + 3, x + 2, y + 6, color);
+            g.fill(x + 3, y + 1, x + 5, y + 6, color);
+            g.fill(x + 6, y + 3, x + 8, y + 6, color);
+            g.fill(x, y + 2, x + 1, y + 3, color);
+            g.fill(x + 3, y, x + 5, y + 1, color);
+            g.fill(x + 7, y + 2, x + 8, y + 3, color);
+            return true;
+        }
+        if (flag == ZoneFlag.DENY_CONTAINERS) {
+            g.fill(x, y + 1, x + 8, y + 2, color);
+            g.fill(x, y + 2, x + 1, y + 7, color);
+            g.fill(x + 7, y + 2, x + 8, y + 7, color);
+            g.fill(x, y + 7, x + 8, y + 8, color);
+            g.fill(x + 1, y + 4, x + 7, y + 5, color);
+            g.fill(x + 3, y + 2, x + 5, y + 4, color);
+            return true;
+        }
+        return false;
+    }
+
+    private void drawScrollBar(GuiGraphics g, int barX, float scroll, int contentHeight, int view) {
         int barH = Math.max(12, view * view / contentHeight);
-        int barY = contentTop() + (int) ((view - barH) * (scroll / (float) Math.max(1, contentHeight - view)));
+        int barY = contentTop() + Math.round((view - barH) * (scroll / (float) Math.max(1, contentHeight - view)));
         g.fill(barX, contentTop(), barX + 3, contentBottom(), 0xFF1A1A22);
         g.fill(barX, barY, barX + 3, barY + barH, ACCENT);
     }
@@ -1823,7 +2059,7 @@ public class ZoneCreateScreen extends Screen {
             return;
         }
         Minecraft mcGate = Minecraft.getInstance();
-        if (mcGate.player != null && !ZoneManager.mayEditZones(mcGate.player)) {
+        if (mcGate.player != null && !ZoneManager.mayWand(mcGate.player, ZoneManager.WandPower.CREATE)) {
             mcGate.player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
             return;
         }
@@ -1916,17 +2152,25 @@ public class ZoneCreateScreen extends Screen {
                 g.fill(getX(), getY(), getX() + 2, getY() + height, ACCENT);
             }
             int cube = flag != null ? flag.colorRgb : navSectionColor(navId);
-            g.fill(getX() + 3, getY() + 5, getX() + 8, getY() + height - 5, 0xFF000000 | cube);
-            int textX = getX() + 11;
-            int textMax = width - (hasToggle ? TOGGLE_STRIP + 8 : 10);
-            g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), textMax),
-                    textX, getY() + (height - 8) / 2, TEXT, false);
+            int markX = getX() + 6;
+            int markY = getY() + (height - 8) / 2;
+            if (!paintMark(g, flag, markX, markY, 0xFF000000 | cube)) {
+                g.drawString(font, markFor(flag, navId), markX, markY, 0xFF000000 | cube, false);
+            }
+            int textX = markX + 10;
+            int textMax = width - (textX - getX()) - (hasToggle ? TOGGLE_STRIP : 8);
+            g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), Math.max(8, textMax)),
+                    textX, markY, TEXT, false);
             if (hasToggle) {
-                int sw = 28;
-                int sx = getX() + width - sw - 3;
-                int sy = getY() + (height - 12) / 2;
-                g.fill(sx, sy, sx + sw, sy + 12, toggleOn ? ON : OFF);
-                g.drawCenteredString(font, toggleOn ? "ON" : "OFF", sx + sw / 2, sy + 2, TEXT);
+                String key = flag != null ? flag.name() : navId.name();
+                float shown = toggleAnim.getOrDefault(key, toggleOn ? 1f : 0f);
+                shown = Mth.lerp(0.45F, shown, toggleOn ? 1f : 0f);
+                toggleAnim.put(key, shown);
+                int sw = 34;
+                int sh = 14;
+                int sx = getX() + width - sw - 4;
+                int sy = getY() + (height - sh) / 2;
+                ToggleSwitch.paint(g, sx, sy, sw, sh, shown);
             }
         }
 
@@ -1934,6 +2178,37 @@ public class ZoneCreateScreen extends Screen {
         protected void updateWidgetNarration(NarrationElementOutput out) {
             defaultButtonNarrationText(out);
         }
+    }
+
+    private static String markFor(ZoneFlag flag, NavId id) {
+        if (flag != null) {
+            return switch (flag) {
+                case VISIBLE -> "\u2600";
+                case DISPLAY -> "\u2605";
+                case CLAIM -> "\u265A";
+                case ADVENTURE_BREAK -> "\u25A0";
+                case ADVENTURE_BUILD -> "\u25B2";
+                case MOB_BUFF -> "\u2665";
+                case MOB_DENY_ENTRY -> "\u2620";
+                case MOB_DENY_SPAWN -> "\u2639";
+                case PLAYER_DAMAGE -> "\u2660";
+                case DENY_PVP -> "\u2694";
+                case DENY_EXPLOSIONS -> "\u2602";
+                case DENY_CONTAINERS -> "\u25A3";
+                case DENY_ENTRY -> "\u26D4";
+                case DENY_TELEPORT -> "\u2194";
+            };
+        }
+        return switch (id) {
+            case FLAG -> "\u2666";
+            case AMBIENCE -> "\u266A";
+            case EVENT -> "\u2605";
+            case GENERAL -> "\u263A";
+            case TEMPLATE -> "\u25C6";
+            case EFFECTS -> "\u2665";
+            case SCRIPTS -> "\u266B";
+            case SALE -> "\u2600";
+        };
     }
 
     private static int navSectionColor(NavId id) {
@@ -1990,6 +2265,7 @@ public class ZoneCreateScreen extends Screen {
         ActionButton(int x, int y, int w, int h, Component label, Runnable action) {
             super(x, y, w, h, label);
             this.action = action;
+            attachDesc(this, label);
         }
 
         @Override
@@ -2107,7 +2383,7 @@ public class ZoneCreateScreen extends Screen {
             drawGradientBorder(g, getX(), getY(), width, height, hov ? ACCENT : 0xFF9A9AA8, ACCENT_BOTTOM);
             int sx = getX() + 4;
             int sy = getY() + 3;
-            g.fill(sx, sy, sx + 10, sy + height - 6, 0xFF000000 | swatchRgb);
+            g.drawString(font, "\u2666", sx, getY() + (height - 8) / 2, 0xFF000000 | swatchRgb, false);
             g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), Math.max(20, width - 22)),
                     getX() + 18, getY() + (height - 8) / 2, TEXT, false);
         }
@@ -2145,6 +2421,15 @@ public class ZoneCreateScreen extends Screen {
         }
     }
 
+    private static void attachDesc(AbstractWidget widget, Component label) {
+        if (label.getContents() instanceof TranslatableContents text) {
+            String desc = text.getKey() + ".desc";
+            if (I18n.exists(desc)) {
+                widget.setTooltip(Tooltip.create(Component.translatable(desc)));
+            }
+        }
+    }
+
     protected class FlagHintBox extends AbstractWidget {
         private final ZoneFlag flag;
         private final String overrideText;
@@ -2170,8 +2455,10 @@ public class ZoneCreateScreen extends Screen {
             String desc = Component.translatable("flag.yblk_zones." + flag.name().toLowerCase() + ".desc")
                     .getString();
             drawWrapped(g, desc, getX() + 8, getY() + 4, width - 12, TEXT, 2);
-            String extra = Component.translatable("screen.yblk_zones.no_extra").getString();
-            g.drawString(font, font.plainSubstrByWidth(extra, width - 12), getX() + 8, getY() + height - 11, MUTED, false);
+            if (!flagHasSubsettings(flag)) {
+                String extra = Component.translatable("screen.yblk_zones.no_extra").getString();
+                g.drawString(font, font.plainSubstrByWidth(extra, width - 12), getX() + 8, getY() + height - 11, MUTED, false);
+            }
         }
 
         @Override

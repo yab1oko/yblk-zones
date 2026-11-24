@@ -581,7 +581,7 @@ public final class Zone {
         if (corners.isEmpty()) {
             return false;
         }
-        if (corners.size() < 3) {
+        if (corners.size() < 3 || flatFootprint()) {
             BlockPos min = getMin();
             BlockPos max = getMax();
             return x >= min.getX() && x < max.getX() + 1
@@ -641,9 +641,27 @@ public final class Zone {
      * Inclusive block corners → outer wireframe edge vertices (exclusive max),
      * matching client selection handles so saved zones keep their polygon shape.
      */
+    /** One inclusive coordinate on an axis is still one block, not a zero-width line. */
+    private boolean flatFootprint() {
+        return getMin().getX() == getMax().getX() || getMin().getZ() == getMax().getZ();
+    }
+
     public List<BlockPos> wireCorners() {
         if (corners.isEmpty()) {
             return List.of();
+        }
+        if (flatFootprint() || isAxisAlignedRect()) {
+            BlockPos min = getMin();
+            BlockPos max = getMax();
+            int x0 = min.getX();
+            int z0 = min.getZ();
+            int x1 = max.getX() + 1;
+            int z1 = max.getZ() + 1;
+            return List.of(
+                    new BlockPos(x0, floorY, z0),
+                    new BlockPos(x1, floorY, z0),
+                    new BlockPos(x1, floorY, z1),
+                    new BlockPos(x0, floorY, z1));
         }
         int maxBX = Integer.MIN_VALUE;
         int maxBZ = Integer.MIN_VALUE;

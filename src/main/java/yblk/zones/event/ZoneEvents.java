@@ -132,17 +132,15 @@ public final class ZoneEvents {
         }
         Player player = event.getPlayer();
         Zone zone = ZoneManager.at(level, event.getPos());
-        if (zone == null) {
-            return;
-        }
-        if (isAdventure(player) && zone.has(ZoneFlag.ADVENTURE_BREAK)) {
-            return; // allow
-        }
-        if (zone.has(ZoneFlag.CLAIM) && !ZoneManager.canModify(player, zone)) {
+        if (isAdventure(player) && !player.hasPermissions(2)
+                && (zone == null || !zone.has(ZoneFlag.ADVENTURE_BREAK))) {
             event.setCanceled(true);
             return;
         }
-        if (isAdventure(player) && !player.hasPermissions(2)) {
+        if (zone == null) {
+            return;
+        }
+        if (zone.has(ZoneFlag.CLAIM) && zone.settings().claimDenyBreak() && !ZoneManager.canModify(player, zone)) {
             event.setCanceled(true);
         }
     }
@@ -160,17 +158,15 @@ public final class ZoneEvents {
             return;
         }
         Zone zone = ZoneManager.at(level, event.getPos());
-        if (zone == null) {
-            return;
-        }
-        if (isAdventure(player) && zone.has(ZoneFlag.ADVENTURE_BUILD)) {
-            return;
-        }
-        if (zone.has(ZoneFlag.CLAIM) && !ZoneManager.canModify(player, zone)) {
+        if (isAdventure(player) && !player.hasPermissions(2)
+                && (zone == null || !zone.has(ZoneFlag.ADVENTURE_BUILD))) {
             event.setCanceled(true);
             return;
         }
-        if (isAdventure(player) && !player.hasPermissions(2)) {
+        if (zone == null) {
+            return;
+        }
+        if (zone.has(ZoneFlag.CLAIM) && zone.settings().claimDenyPlace() && !ZoneManager.canModify(player, zone)) {
             event.setCanceled(true);
         }
     }
@@ -204,9 +200,6 @@ public final class ZoneEvents {
         }
         BlockPos placeAt = event.getPos().relative(event.getFace());
         Zone zone = ZoneManager.at(level, placeAt);
-        if (zone == null) {
-            zone = ZoneManager.at(level, event.getPos());
-        }
         if (zone != null && zone.has(ZoneFlag.ADVENTURE_BUILD)) {
             grantMayBuild(player);
             event.setUseBlock(Event.Result.ALLOW);
@@ -310,6 +303,10 @@ public final class ZoneEvents {
         }
         if (inFlag(attacker, ZoneFlag.DENY_PVP) || inFlag(victim, ZoneFlag.DENY_PVP)) {
             event.setCanceled(true);
+            return;
+        }
+        if (claimGuestBlocked(victim, attacker, zone -> zone.settings().claimDenyAttack())) {
+            event.setCanceled(true);
         }
     }
 
@@ -329,11 +326,15 @@ public final class ZoneEvents {
         boolean fireItem = stack.getItem() instanceof FlintAndSteelItem || stack.getItem() instanceof FireChargeItem;
         boolean bucket = stack.getItem() instanceof BucketItem;
         boolean claimLocked = zone.has(ZoneFlag.CLAIM) && !ZoneManager.canModify(player, zone);
+        if (claimLocked && zone.settings().claimDenyBlockUse()) {
+            denyUse(event);
+            return;
+        }
         if (claimLocked && (container || fireItem || bucket)) {
             denyUse(event);
             return;
         }
-        if (zone.has(ZoneFlag.DENY_CONTAINERS) && container && !ZoneManager.canModify(player, zone) && !player.hasPermissions(2)) {
+        if (zone.has(ZoneFlag.DENY_CONTAINERS) && container && !protectionExempt(player, zone)) {
             denyUse(event);
         }
     }
@@ -343,9 +344,45 @@ public final class ZoneEvents {
         if (event.getLevel().isClientSide()) {
             return;
         }
-        if (lockedDecoration(event.getEntity(), event.getTarget())) {
+        if (lockedDecoration(event.getEntity(), event.getTarget())
+                || claimGuestBlocked(event.getTarget(), event.getEntity(), zone -> zone.settings().claimDenyEntityUse())) {
             event.setCanceled(true);
         }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onProtectEntitySpecific(PlayerInteractEvent.EntityInteractSpecific event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        if (claimGuestBlocked(event.getTarget(), event.getEntity(), zone -> zone.settings().claimDenyEntityUse())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onClaimAttackAny(LivingAttackEvent event) {
+        if (!(event.getSource().getEntity() instanceof Player attacker)) {
+            return;
+        }
+        if (claimGuestBlocked(event.getEntity(), attacker, zone -> zone.settings().claimDenyAttack())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGH)
+    public static void onClaimHurt(LivingHurtEvent event) {
+        if (event.getEntity().level().isClientSide() || !(event.getEntity().level() instanceof ServerLevel level)) {
+            return;
+        }
+        Zone zone = ZoneManager.at(level, event.getEntity().blockPosition());
+        if (zone == null || !zone.has(ZoneFlag.CLAIM) || !zone.settings().claimDenyHurt()) {
+            return;
+        }
+        if (event.getSource().getEntity() == null && event.getSource().getDirectEntity() == null) {
+            return;
+        }
+        event.setCanceled(true);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGH)
@@ -353,7 +390,18 @@ public final class ZoneEvents {
         if (event.getEntity().level().isClientSide()) {
             return;
         }
-        if (lockedDecoration(event.getEntity(), event.getTarget())) {
+        if (lockedDecoration(event.getEntity(), event.getTarget())
+                || claimGuestBlocked(event.getTarget(), event.getEntity(), zone -> zone.settings().claimDenyAttack())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onExplosionStart(ExplosionEvent.Start event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) {
+            return;
+        }
+        if (explosionBlocked(level, BlockPos.containing(event.getExplosion().getPosition()))) {
             event.setCanceled(true);
         }
     }
@@ -456,8 +504,7 @@ public final class ZoneEvents {
 
         GameType mode = player.gameMode.getGameModeForPlayer();
         if (mode == GameType.ADVENTURE) {
-            boolean allow = zone != null
-                    && (zone.has(ZoneFlag.ADVENTURE_BUILD) || zone.has(ZoneFlag.ADVENTURE_BREAK));
+            boolean allow = adventureLookAllows(player, level);
             if (player.getAbilities().mayBuild != allow) {
                 player.getAbilities().mayBuild = allow;
                 player.onUpdateAbilities();
@@ -799,6 +846,29 @@ public final class ZoneEvents {
         };
     }
 
+    /** Adventure build rights follow the block under the crosshair, not the player's feet. */
+    private static boolean adventureLookAllows(Player player, ServerLevel level) {
+        net.minecraft.world.phys.HitResult look = player.pick(player.getBlockReach(), 0.0F, false);
+        if (!(look instanceof net.minecraft.world.phys.BlockHitResult block)
+                || block.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK) {
+            return false;
+        }
+        Zone broken = ZoneManager.at(level, block.getBlockPos());
+        if (broken != null && broken.has(ZoneFlag.ADVENTURE_BREAK)) {
+            return true;
+        }
+        Zone placed = ZoneManager.at(level, block.getBlockPos().relative(block.getDirection()));
+        return placed != null && placed.has(ZoneFlag.ADVENTURE_BUILD);
+    }
+
+    private static boolean claimGuestBlocked(Entity target, Player player, java.util.function.Predicate<Zone> rule) {
+        if (!(player.level() instanceof ServerLevel level)) {
+            return false;
+        }
+        Zone zone = ZoneManager.at(level, target.blockPosition());
+        return zone != null && zone.has(ZoneFlag.CLAIM) && rule.test(zone) && !ZoneManager.canModify(player, zone);
+    }
+
     private static boolean isAdventure(Player player) {
         if (player instanceof ServerPlayer sp) {
             return sp.gameMode.getGameModeForPlayer() == GameType.ADVENTURE;
@@ -827,17 +897,25 @@ public final class ZoneEvents {
         };
     }
 
-    private static boolean mayPassEntry(Player player, Zone zone) {
-        if (player.hasPermissions(2)) {
+    /**
+     * Claim members and trusted players skip the deny flags. Ops do not, so the flags
+     * can be checked on an unclaimed zone in a singleplayer world.
+     */
+    private static boolean protectionExempt(Player player, Zone zone) {
+        if (zone.settings().isTrusted(player)) {
             return true;
+        }
+        if (!zone.has(ZoneFlag.CLAIM)) {
+            return false;
         }
         if (zone.getOwner() != null && zone.getOwner().equals(player.getUUID())) {
             return true;
         }
-        if (zone.roleOf(player).canBuild()) {
-            return true;
-        }
-        return zone.settings().isTrusted(player);
+        return zone.roleOf(player).canBuild();
+    }
+
+    private static boolean mayPassEntry(Player player, Zone zone) {
+        return protectionExempt(player, zone);
     }
 
     private static void pushPlayerOutside(ServerPlayer player, Zone zone, UUID playerId) {
@@ -879,21 +957,21 @@ public final class ZoneEvents {
     }
 
     private static void denyPlayerTeleport(ServerPlayer player, Vec3 from, Vec3 to, EntityTeleportEvent event) {
-        if (player.hasPermissions(2) || PULLING.contains(player.getUUID())) {
+        if (PULLING.contains(player.getUUID())) {
             return;
         }
         if (!(player.level() instanceof ServerLevel level)) {
             return;
         }
-        if (teleportBlocked(level, from) || teleportBlocked(level, to)) {
+        if (teleportBlocked(level, player, from) || teleportBlocked(level, player, to)) {
             event.setCanceled(true);
             player.displayClientMessage(Component.translatable("message.yblk_zones.deny_teleport"), true);
         }
     }
 
-    private static boolean teleportBlocked(ServerLevel level, Vec3 pos) {
+    private static boolean teleportBlocked(ServerLevel level, Player player, Vec3 pos) {
         Zone zone = ZoneManager.at(level, BlockPos.containing(pos));
-        return zone != null && zone.has(ZoneFlag.DENY_TELEPORT);
+        return zone != null && zone.has(ZoneFlag.DENY_TELEPORT) && !protectionExempt(player, zone);
     }
 
     private static boolean inFlag(Entity entity, ZoneFlag flag) {

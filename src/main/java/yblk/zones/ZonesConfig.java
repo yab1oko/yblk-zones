@@ -18,8 +18,24 @@ public final class ZonesConfig {
             .defineInRange("maxZoneVolume", 4096, 64, 2_000_000);
 
     private static final ForgeConfigSpec.BooleanValue REQUIRE_CREATIVE_OR_OP = B
-            .comment("When true, only operators (permission 2) or creative players may create, reshape, or delete unowned zones. Claimed-plot owners keep their owner menu.")
+            .comment("When true, only operators (permission 2) or creative players may use the wand on unowned zones, unless a survival grant below is turned on. Claimed-plot owners keep their owner menu.")
             .define("requireCreativeOrOpToEdit", true);
+
+    private static final ForgeConfigSpec.BooleanValue SURVIVAL_CREATE = B
+            .comment("Survival players may start and save a new zone. Default: false.")
+            .define("survivalCreate", false);
+
+    private static final ForgeConfigSpec.BooleanValue SURVIVAL_RESHAPE = B
+            .comment("Survival players may reshape an unowned zone, add points, and move faces. Default: false.")
+            .define("survivalReshape", false);
+
+    private static final ForgeConfigSpec.BooleanValue SURVIVAL_SETTINGS = B
+            .comment("Survival players may open the settings menu of an unowned zone and change its flags. Default: false.")
+            .define("survivalSettings", false);
+
+    private static final ForgeConfigSpec.BooleanValue SURVIVAL_DELETE = B
+            .comment("Survival players may delete an unowned zone. Default: false.")
+            .define("survivalDelete", false);
 
     private static final ForgeConfigSpec.BooleanValue DEFAULT_CREATOR_OWNS = B
             .comment("When true, the player who creates a zone becomes its owner automatically.")
@@ -54,6 +70,10 @@ public final class ZonesConfig {
     public static int maxZoneSize;
     public static int maxZoneVolume;
     public static boolean requireCreativeOrOpToEdit;
+    public static boolean survivalCreate;
+    public static boolean survivalReshape;
+    public static boolean survivalSettings;
+    public static boolean survivalDelete;
     public static boolean defaultCreatorOwns;
     public static int defaultLeasePeriodTicks;
     public static float defaultProximityRadius;
@@ -73,6 +93,10 @@ public final class ZonesConfig {
         maxZoneSize = MAX_ZONE_SIZE.get();
         maxZoneVolume = MAX_ZONE_VOLUME.get();
         requireCreativeOrOpToEdit = REQUIRE_CREATIVE_OR_OP.get();
+        survivalCreate = SURVIVAL_CREATE.get();
+        survivalReshape = SURVIVAL_RESHAPE.get();
+        survivalSettings = SURVIVAL_SETTINGS.get();
+        survivalDelete = SURVIVAL_DELETE.get();
         defaultCreatorOwns = DEFAULT_CREATOR_OWNS.get();
         defaultLeasePeriodTicks = DEFAULT_LEASE_PERIOD_TICKS.get();
         defaultProximityRadius = DEFAULT_PROXIMITY_RADIUS.get().floatValue();

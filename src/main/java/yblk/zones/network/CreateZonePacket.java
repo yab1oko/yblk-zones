@@ -176,7 +176,7 @@ public record CreateZonePacket(
             if (player == null || packet.corners.size() < 2) {
                 return;
             }
-            if (!ZoneManager.mayEditZones(player)) {
+            if (!ZoneManager.mayWand(player, ZoneManager.WandPower.CREATE)) {
                 player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
                 return;
             }

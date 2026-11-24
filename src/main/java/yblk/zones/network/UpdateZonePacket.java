@@ -110,6 +110,22 @@ public record UpdateZonePacket(
                 pay, priority, allowCommands, eventEnabled, eventNeedsConfirm, denyExitWhileEvent, actions);
     }
 
+    private static boolean shapeChanged(Zone zone, UpdateZonePacket packet) {
+        if (zone.getHeight() != packet.height || zone.getFloorY() != packet.floorY) {
+            return true;
+        }
+        List<BlockPos> current = zone.getCorners();
+        if (current.size() != packet.corners.size()) {
+            return true;
+        }
+        for (int i = 0; i < current.size(); i++) {
+            if (!current.get(i).equals(packet.corners.get(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static void handle(UpdateZonePacket packet, Supplier<NetworkEvent.Context> ctx) {
         ctx.get().enqueueWork(() -> {
             ServerPlayer player = ctx.get().getSender();
@@ -121,9 +137,16 @@ public record UpdateZonePacket(
                 player.displayClientMessage(Component.translatable("message.yblk_zones.not_in_zone"), true);
                 return;
             }
-            if (!ZoneManager.canModify(player, zone)) {
-                player.displayClientMessage(Component.translatable(
-                        zone.has(ZoneFlag.CLAIM) ? "message.yblk_zones.not_owner" : "message.yblk_zones.need_edit_perm"), true);
+            if (zone.has(ZoneFlag.CLAIM)) {
+                if (!ZoneManager.canModify(player, zone)) {
+                    player.displayClientMessage(Component.translatable("message.yblk_zones.not_owner"), true);
+                    return;
+                }
+            } else if (!ZoneManager.mayWand(player, ZoneManager.WandPower.SETTINGS)) {
+                player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
+                return;
+            } else if (shapeChanged(zone, packet) && !ZoneManager.mayWand(player, ZoneManager.WandPower.RESHAPE)) {
+                player.displayClientMessage(Component.translatable("message.yblk_zones.need_edit_perm"), true);
                 return;
             }
             int height = Math.max(1, Math.min(packet.height, ZoneManager.edgeCap(player)));

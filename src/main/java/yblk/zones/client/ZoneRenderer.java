@@ -44,6 +44,12 @@ public final class ZoneRenderer {
     private static final float CUBE_ACTIVE = 0.12F;
     /** Lift outline slightly so it sits on grass tops, not inside. */
     private static final double Y_BIAS = 0.02;
+    private static double outlineFloor;
+    private static double outlineCeil;
+    private static double outlineCx;
+    private static double outlineCz;
+    /** Beam sits on the block top. 0.12 left a visible gap. */
+    private static final double SURFACE_LIFT = 0.0D;
     /** Soft band (blocks) at proximity radius for outline alpha. */
     private static final float PROX_SOFT = 0.3F;
 
@@ -89,6 +95,8 @@ public final class ZoneRenderer {
         RenderSystem.disableCull();
         RenderSystem.depthMask(false);
         RenderSystem.enableDepthTest();
+        RenderSystem.enablePolygonOffset();
+        RenderSystem.polygonOffset(-3.0F, -3.0F);
 
         float scroll = (mc.level.getGameTime() + event.getPartialTick()) * 0.012F;
         boolean wand = ClientWand.holdingWand();
@@ -98,9 +106,12 @@ public final class ZoneRenderer {
             double[] mx = ZoneSelection.displayMax();
             double y0 = mn[1] + Y_BIAS;
             double y1 = mx[1] + Y_BIAS;
+            outlineFloor = y0;
+            outlineCeil = y1;
+            var handles = ZoneSelection.displayCorners();
+            setOutlineCenter(handles, (mn[0] + mx[0]) * 0.5, (mn[2] + mx[2]) * 0.5);
             float gh = ZonesConfig.gradientHeight > 0 ? ZonesConfig.gradientHeight : 2.2F;
             double bandTop = Math.min(y0 + gh, y1);
-            var handles = ZoneSelection.displayCorners();
             if (handles.size() >= 2) {
                 softGradientWallsPolygon(mat, handles, y0, bandTop, 0.35f, 0.92f, 0.75f);
                 scrollingHatchPolygon(mat, handles, y0, bandTop, 0.35f, 0.92f, 0.75f, scroll);
@@ -144,7 +155,10 @@ public final class ZoneRenderer {
             AABB aabb = zone.aabb();
             double y0 = aabb.minY + Y_BIAS;
             double y1 = aabb.maxY + Y_BIAS;
+            outlineFloor = y0;
+            outlineCeil = y1;
             List<Vec3> poly = wireVerts(zone);
+            setOutlineCenter(poly, (aabb.minX + aabb.maxX) * 0.5, (aabb.minZ + aabb.maxZ) * 0.5);
             float gh = settings.hatchHeight() > 0 ? settings.hatchHeight() : defaultGh;
             double bandTop = Math.min(y0 + gh, y1);
             // Never force ALWAYS just because the wand is held — that made Edge/Hatch proximity look broken.
@@ -177,6 +191,7 @@ public final class ZoneRenderer {
             }
         }
 
+        RenderSystem.disablePolygonOffset();
         RenderSystem.enableDepthTest();
         RenderSystem.depthMask(true);
         RenderSystem.enableCull();
@@ -258,21 +273,12 @@ public final class ZoneRenderer {
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
-        double h = y1 - y0;
+        double height = y1 - y0;
         int n = verts.size();
-        double midY = (y0 + y1) * 0.5;
-        for (int i = 0; i < GRADIENT_BANDS; i++) {
-            double t0 = i / (double) GRADIENT_BANDS;
-            double t1 = (i + 1) / (double) GRADIENT_BANDS;
-            float a0 = (float) (0.42 * Math.pow(1.0 - t0, 1.65));
-            float a1 = (float) (0.42 * Math.pow(1.0 - t1, 1.65));
-            double ya = y0 + h * t0;
-            double yb = y0 + h * t1;
-            for (int e = 0; e < n; e++) {
-                var a = verts.get(e);
-                var c = verts.get((e + 1) % n);
-                proximityWallBand(buf, mat, player, a.x, a.z, c.x, c.z, ya, yb, r, g, b, a0, a1, prox, radius);
-            }
+        for (int e = 0; e < n; e++) {
+            var a = verts.get(e);
+            var c = verts.get((e + 1) % n);
+            gradientColumns(buf, mat, player, a.x, a.z, c.x, c.z, height, r, g, b, prox, radius);
         }
         tess.end();
     }
@@ -302,23 +308,59 @@ public final class ZoneRenderer {
         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
         float uOff = scroll;
         float vOff = scroll * 0.55F;
-        double h = y1 - y0;
+        double height = y1 - y0;
         int n = verts.size();
-        for (int i = 0; i < HATCH_BANDS; i++) {
-            double t0 = i / (double) HATCH_BANDS;
-            double t1 = (i + 1) / (double) HATCH_BANDS;
-            float a0 = (float) (0.48 * Math.pow(1.0 - t0, 1.85));
-            float a1 = (float) (0.48 * Math.pow(1.0 - t1, 1.85));
-            double ya = y0 + h * t0;
-            double yb = y0 + h * t1;
-            for (int e = 0; e < n; e++) {
-                var a = verts.get(e);
-                var c = verts.get((e + 1) % n);
-                proximityHatchBand(buf, mat, player, a.x, a.z, c.x, c.z, ya, yb, r, g, b, a0, a1,
-                        uOff, vOff, prox, radius);
-            }
+        for (int e = 0; e < n; e++) {
+            var a = verts.get(e);
+            var c = verts.get((e + 1) % n);
+            hatchColumns(buf, mat, player, a.x, a.z, c.x, c.z, height, r, g, b, uOff, vOff, prox, radius);
         }
         tess.end();
+    }
+
+    /** One flat column per block the edge actually crosses. Same spans as the wire. */
+    private static void gradientColumns(
+            BufferBuilder buf, Matrix4f mat, Vec3 player,
+            double ax, double az, double bx, double bz, double height,
+            float r, float g, float b,
+            ZoneSettings.OutlineProximity prox, float radius) {
+        walkBlocks(ax, az, bx, bz, (x0, z0, x1, z1, base, prev) -> {
+            double top = Math.min(base + height, outlineCeil);
+            if (top <= base + 0.05) {
+                return;
+            }
+            double h = top - base;
+            for (int i = 0; i < GRADIENT_BANDS; i++) {
+                double u0 = i / (double) GRADIENT_BANDS;
+                double u1 = (i + 1) / (double) GRADIENT_BANDS;
+                float a0 = (float) (0.42 * Math.pow(1.0 - u0, 1.65));
+                float a1 = (float) (0.42 * Math.pow(1.0 - u1, 1.65));
+                proximityWallBand(buf, mat, player, x0, z0, x1, z1,
+                        base + h * u0, base + h * u1, r, g, b, a0, a1, prox, radius);
+            }
+        });
+    }
+
+    private static void hatchColumns(
+            BufferBuilder buf, Matrix4f mat, Vec3 player,
+            double ax, double az, double bx, double bz, double height,
+            float r, float g, float b, float uOff, float vOff,
+            ZoneSettings.OutlineProximity prox, float radius) {
+        walkBlocks(ax, az, bx, bz, (x0, z0, x1, z1, base, prev) -> {
+            double top = Math.min(base + height, outlineCeil);
+            if (top <= base + 0.05) {
+                return;
+            }
+            double h = top - base;
+            for (int i = 0; i < HATCH_BANDS; i++) {
+                double u0 = i / (double) HATCH_BANDS;
+                double u1 = (i + 1) / (double) HATCH_BANDS;
+                float a0 = (float) (0.48 * Math.pow(1.0 - u0, 1.85));
+                float a1 = (float) (0.48 * Math.pow(1.0 - u1, 1.85));
+                proximityHatchBand(buf, mat, player, x0, z0, x1, z1,
+                        base + h * u0, base + h * u1, r, g, b, a0, a1, uOff, vOff, prox, radius);
+            }
+        });
     }
 
     /** Subdivide a wall edge so NEAR_REVEAL only lights the nearby strip. */
@@ -430,13 +472,13 @@ public final class ZoneRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         for (int i = 0; i < n; i++) {
             var a = verts.get(i);
             var c = verts.get((i + 1) % n);
-            proximityLine(buf, mat, player, a.x, y0, a.z, c.x, y0, c.z, r, g, b, edgeA, prox, radius);
+            terrainEdge(buf, mat, player, a.x, a.z, c.x, c.z, y0, y1, r, g, b, edgeA, prox, radius);
             proximityLine(buf, mat, player, a.x, y1, a.z, c.x, y1, c.z, r, g, b, topA, prox, radius);
-            proximityLine(buf, mat, player, a.x, y0, a.z, a.x, y1, a.z, r, g, b, 0.65f, prox, radius);
+            proximityLine(buf, mat, player, a.x, cornerGround(a.x, a.z, y0, y1), a.z, a.x, y1, a.z, r, g, b, 0.65f, prox, radius);
         }
         tess.end();
     }
@@ -461,16 +503,16 @@ public final class ZoneRenderer {
             ZoneSettings.OutlineProximity prox, float radius, Vec3 player) {
         float edgeA = selection ? 1f : 0.85f;
         float topA = selection ? 0.7f : 0.5f;
-        drawFloorPerimeter(mat, x0, y0, z0, x1, z1, r, g, b, edgeA, prox, radius, player);
+        drawTerrainPerimeter(mat, x0, z0, x1, z1, y0, y1, r, g, b, edgeA, prox, radius, player);
         drawFloorPerimeter(mat, x0, y1, z0, x1, z1, r, g, b, topA, prox, radius, player);
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
-        proximityLine(buf, mat, player, x0, y0, z0, x0, y1, z0, r, g, b, 0.65f, prox, radius);
-        proximityLine(buf, mat, player, x1, y0, z0, x1, y1, z0, r, g, b, 0.65f, prox, radius);
-        proximityLine(buf, mat, player, x1, y0, z1, x1, y1, z1, r, g, b, 0.65f, prox, radius);
-        proximityLine(buf, mat, player, x0, y0, z1, x0, y1, z1, r, g, b, 0.65f, prox, radius);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        proximityLine(buf, mat, player, x0, cornerGround(x0, z0, y0, y1), z0, x0, y1, z0, r, g, b, 0.65f, prox, radius);
+        proximityLine(buf, mat, player, x1, cornerGround(x1, z0, y0, y1), z0, x1, y1, z0, r, g, b, 0.65f, prox, radius);
+        proximityLine(buf, mat, player, x1, cornerGround(x1, z1, y0, y1), z1, x1, y1, z1, r, g, b, 0.65f, prox, radius);
+        proximityLine(buf, mat, player, x0, cornerGround(x0, z1, y0, y1), z1, x0, y1, z1, r, g, b, 0.65f, prox, radius);
         tess.end();
         drawCornerCubes(mat, x0, y0, z0, x1, z1, r, g, b);
         drawCornerCubes(mat, x0, y1, z0, x1, z1, r, g, b);
@@ -541,6 +583,182 @@ public final class ZoneRenderer {
         tess.end();
     }
 
+    /**
+     * Top of the solid the column actually rests on. Climbs out of a block the
+     * line would otherwise cut through, and drops into a valley below the zone floor.
+     * Not clamped to the zone box — that clamp is what kept the wire from going down.
+     */
+    private static double groundY(double x, double z, double zoneFloor, double zoneCeil) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return zoneFloor + SURFACE_LIFT;
+        }
+        int bx = Mth.floor(x);
+        int bz = Mth.floor(z);
+        int floor = Mth.floor(zoneFloor);
+        int y = floor;
+        int guard = 0;
+        int topLimit = Math.max(Mth.floor(zoneCeil), floor) + 48;
+        while (y < topLimit && guard++ < 96 && solidColumn(mc.level, bx, y, bz)) {
+            y++;
+        }
+        if (!solidColumn(mc.level, bx, y - 1, bz)) {
+            int down = y;
+            int drops = 0;
+            int bottom = floor - 64;
+            while (down > bottom && drops++ < 96 && !solidColumn(mc.level, bx, down - 1, bz)) {
+                down--;
+            }
+            if (solidColumn(mc.level, bx, down - 1, bz)) {
+                y = down;
+            }
+        }
+        double top = y;
+        if (solidColumn(mc.level, bx, y - 1, bz)) {
+            BlockPos pos = new BlockPos(bx, y - 1, bz);
+            var shape = mc.level.getBlockState(pos).getCollisionShape(mc.level, pos);
+            if (!shape.isEmpty()) {
+                top = (y - 1) + shape.max(Direction.Axis.Y);
+            }
+        }
+        return top + SURFACE_LIFT;
+    }
+
+    /** Corner post uses the block inside the zone, not the one just outside the edge. */
+    private static double cornerGround(double x, double z, double zoneFloor, double zoneCeil) {
+        double dx = outlineCx - x;
+        double dz = outlineCz - z;
+        double d = Math.hypot(dx, dz);
+        if (d > 1.0E-4) {
+            x += dx / d * 0.51;
+            z += dz / d * 0.51;
+        }
+        return groundY(x, z, zoneFloor, zoneCeil);
+    }
+
+    private static void setOutlineCenter(List<Vec3> verts, double fallbackX, double fallbackZ) {
+        if (verts.size() < 2) {
+            outlineCx = fallbackX;
+            outlineCz = fallbackZ;
+            return;
+        }
+        double sx = 0;
+        double sz = 0;
+        for (Vec3 v : verts) {
+            sx += v.x;
+            sz += v.z;
+        }
+        outlineCx = sx / verts.size();
+        outlineCz = sz / verts.size();
+    }
+
+    /**
+     * Walk an edge one block column at a time. The sample is nudged inside the zone
+     * so a boundary coordinate does not read the neighbour block.
+     */
+    private static void walkBlocks(double x0, double z0, double x1, double z1, BlockSpan span) {
+        double dx = x1 - x0;
+        double dz = z1 - z0;
+        double len = Math.hypot(dx, dz);
+        if (len < 1.0E-4) {
+            return;
+        }
+        double ux = dx / len;
+        double uz = dz / len;
+        double nx = -uz;
+        double nz = ux;
+        double midX = (x0 + x1) * 0.5;
+        double midZ = (z0 + z1) * 0.5;
+        if ((outlineCx - midX) * nx + (outlineCz - midZ) * nz < 0) {
+            nx = -nx;
+            nz = -nz;
+        }
+        double traveled = 0;
+        double px = x0;
+        double pz = z0;
+        double prevY = Double.NaN;
+        int guard = 0;
+        while (traveled < len - 1.0E-4 && guard++ < 4096) {
+            double remain = len - traveled;
+            double step = Math.min(remain, boundaryStep(px, pz, ux, uz));
+            if (step < 1.0E-4) {
+                step = Math.min(remain, 1.0E-3);
+            }
+            double nx1 = x0 + ux * (traveled + step);
+            double nz1 = z0 + uz * (traveled + step);
+            if (remain - step < 1.0E-4) {
+                nx1 = x1;
+                nz1 = z1;
+                step = remain;
+            }
+            double sx = (px + nx1) * 0.5 + nx * 0.51;
+            double sz = (pz + nz1) * 0.5 + nz * 0.51;
+            double y = groundY(sx, sz, outlineFloor, outlineCeil);
+            span.accept(px, pz, nx1, nz1, y, prevY);
+            prevY = y;
+            px = nx1;
+            pz = nz1;
+            traveled += step;
+        }
+    }
+
+    private static double boundaryStep(double x, double z, double ux, double uz) {
+        return Math.min(axisStep(x, ux), axisStep(z, uz));
+    }
+
+    /** Distance along the edge to the next integer grid plane. */
+    private static double axisStep(double p, double u) {
+        if (Math.abs(u) < 1.0E-8) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (Math.abs(p - Math.rint(p)) < 1.0E-4) {
+            return 1.0 / Math.abs(u);
+        }
+        double next = u > 0 ? Math.floor(p) + 1.0 : Math.ceil(p) - 1.0;
+        return Math.max(1.0E-4, (next - p) / u);
+    }
+
+    @FunctionalInterface
+    private interface BlockSpan {
+        void accept(double ax, double az, double bx, double bz, double y, double prevY);
+    }
+
+    private static boolean solidColumn(net.minecraft.world.level.Level level, int x, int y, int z) {
+        BlockPos pos = new BlockPos(x, y, z);
+        return !level.getBlockState(pos).getCollisionShape(level, pos).isEmpty();
+    }
+
+    private static void terrainEdge(
+            BufferBuilder buf, Matrix4f mat, Vec3 player,
+            double x0, double z0, double x1, double z1,
+            double zoneFloor, double zoneCeil,
+            float r, float g, float b, float a,
+            ZoneSettings.OutlineProximity prox, float radius) {
+        walkBlocks(x0, z0, x1, z1, (ax, az, bx, bz, y, prev) -> {
+            if (!Double.isNaN(prev) && Math.abs(y - prev) > 0.02) {
+                proximityLine(buf, mat, player, ax, prev, az, ax, y, az, r, g, b, a, prox, radius);
+            }
+            proximityLine(buf, mat, player, ax, y, az, bx, y, bz, r, g, b, a, prox, radius);
+        });
+    }
+
+    private static void drawTerrainPerimeter(
+            Matrix4f mat,
+            double x0, double z0, double x1, double z1,
+            double zoneFloor, double zoneCeil,
+            float r, float g, float b, float a,
+            ZoneSettings.OutlineProximity prox, float radius, Vec3 player) {
+        RenderSystem.setShader(GameRenderer::getPositionColorShader);
+        Tesselator tess = Tesselator.getInstance();
+        BufferBuilder buf = tess.getBuilder();
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+        terrainEdge(buf, mat, player, x0, z0, x1, z0, zoneFloor, zoneCeil, r, g, b, a, prox, radius);
+        terrainEdge(buf, mat, player, x1, z0, x1, z1, zoneFloor, zoneCeil, r, g, b, a, prox, radius);
+        terrainEdge(buf, mat, player, x1, z1, x0, z1, zoneFloor, zoneCeil, r, g, b, a, prox, radius);
+        terrainEdge(buf, mat, player, x0, z1, x0, z0, zoneFloor, zoneCeil, r, g, b, a, prox, radius);
+        tess.end();
+    }
+
     private static void drawFloorPerimeter(
             Matrix4f mat,
             double x0, double y, double z0,
@@ -559,7 +777,7 @@ public final class ZoneRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
         Tesselator tess = Tesselator.getInstance();
         BufferBuilder buf = tess.getBuilder();
-        buf.begin(VertexFormat.Mode.DEBUG_LINES, DefaultVertexFormat.POSITION_COLOR);
+        buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
         proximityLine(buf, mat, player, x0, y, z0, x1, y, z0, r, g, b, a, prox, radius);
         proximityLine(buf, mat, player, x1, y, z0, x1, y, z1, r, g, b, a, prox, radius);
         proximityLine(buf, mat, player, x1, y, z1, x0, y, z1, r, g, b, a, prox, radius);
@@ -603,19 +821,11 @@ public final class ZoneRenderer {
         BufferBuilder buf = tess.getBuilder();
         buf.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
-        double h = y1 - y0;
-        for (int i = 0; i < GRADIENT_BANDS; i++) {
-            double t0 = i / (double) GRADIENT_BANDS;
-            double t1 = (i + 1) / (double) GRADIENT_BANDS;
-            float a0 = (float) (0.42 * Math.pow(1.0 - t0, 1.65));
-            float a1 = (float) (0.42 * Math.pow(1.0 - t1, 1.65));
-            double ya = y0 + h * t0;
-            double yb = y0 + h * t1;
-            proximityWallBand(buf, mat, player, x0, z0, x1, z0, ya, yb, r, g, b, a0, a1, prox, radius);
-            proximityWallBand(buf, mat, player, x1, z1, x0, z1, ya, yb, r, g, b, a0, a1, prox, radius);
-            proximityWallBand(buf, mat, player, x0, z1, x0, z0, ya, yb, r, g, b, a0, a1, prox, radius);
-            proximityWallBand(buf, mat, player, x1, z0, x1, z1, ya, yb, r, g, b, a0, a1, prox, radius);
-        }
+        double height = y1 - y0;
+        gradientColumns(buf, mat, player, x0, z0, x1, z0, height, r, g, b, prox, radius);
+        gradientColumns(buf, mat, player, x1, z1, x0, z1, height, r, g, b, prox, radius);
+        gradientColumns(buf, mat, player, x0, z1, x0, z0, height, r, g, b, prox, radius);
+        gradientColumns(buf, mat, player, x1, z0, x1, z1, height, r, g, b, prox, radius);
         tess.end();
     }
 
@@ -645,19 +855,11 @@ public final class ZoneRenderer {
 
         float uOff = scroll;
         float vOff = scroll * 0.55F;
-        double h = y1 - y0;
-        for (int i = 0; i < HATCH_BANDS; i++) {
-            double t0 = i / (double) HATCH_BANDS;
-            double t1 = (i + 1) / (double) HATCH_BANDS;
-            float a0 = (float) (0.48 * Math.pow(1.0 - t0, 1.85));
-            float a1 = (float) (0.48 * Math.pow(1.0 - t1, 1.85));
-            double ya = y0 + h * t0;
-            double yb = y0 + h * t1;
-            proximityHatchBand(buf, mat, player, x0, z0, x1, z0, ya, yb, r, g, b, a0, a1, uOff, vOff, prox, radius);
-            proximityHatchBand(buf, mat, player, x0, z1, x1, z1, ya, yb, r, g, b, a0, a1, uOff, vOff, prox, radius);
-            proximityHatchBand(buf, mat, player, x0, z0, x0, z1, ya, yb, r, g, b, a0, a1, uOff, vOff, prox, radius);
-            proximityHatchBand(buf, mat, player, x1, z0, x1, z1, ya, yb, r, g, b, a0, a1, uOff, vOff, prox, radius);
-        }
+        double height = y1 - y0;
+        hatchColumns(buf, mat, player, x0, z0, x1, z0, height, r, g, b, uOff, vOff, prox, radius);
+        hatchColumns(buf, mat, player, x0, z1, x1, z1, height, r, g, b, uOff, vOff, prox, radius);
+        hatchColumns(buf, mat, player, x0, z0, x0, z1, height, r, g, b, uOff, vOff, prox, radius);
+        hatchColumns(buf, mat, player, x1, z0, x1, z1, height, r, g, b, uOff, vOff, prox, radius);
         tess.end();
     }
 
@@ -732,6 +934,54 @@ public final class ZoneRenderer {
         vert(buf, mat, x3, y3, z3, r, g, b, a);
     }
 
+    /** Visible stroke. DEBUG_LINES vanish on the ground and leave a single vertical streak. */
+    private static void beam(
+            BufferBuilder buf, Matrix4f mat,
+            double x0, double y0, double z0,
+            double x1, double y1, double z1,
+            float r, float g, float b, float a) {
+        double dx = x1 - x0;
+        double dy = y1 - y0;
+        double dz = z1 - z0;
+        double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (len < 1.0E-5) {
+            return;
+        }
+        dx /= len;
+        dy /= len;
+        dz /= len;
+        double px;
+        double py;
+        double pz;
+        if (Math.abs(dy) > 0.9) {
+            px = 1;
+            py = 0;
+            pz = 0;
+        } else {
+            px = dz;
+            py = 0;
+            pz = -dx;
+        }
+        double plen = Math.sqrt(px * px + py * py + pz * pz);
+        px /= plen;
+        py /= plen;
+        pz /= plen;
+        double qx = dy * pz - dz * py;
+        double qy = dz * px - dx * pz;
+        double qz = dx * py - dy * px;
+        double s = 0.035;
+        double ax = x0 + px * s, ay = y0 + py * s, az = z0 + pz * s;
+        double bx = x0 - px * s, by = y0 - py * s, bz = z0 - pz * s;
+        double cx = x0 + qx * s, cy = y0 + qy * s, cz = z0 + qz * s;
+        double dx0 = x0 - qx * s, dy0 = y0 - qy * s, dz0 = z0 - qz * s;
+        double ex = x1 + px * s, ey = y1 + py * s, ez = z1 + pz * s;
+        double fx = x1 - px * s, fy = y1 - py * s, fz = z1 - pz * s;
+        double gx = x1 + qx * s, gy = y1 + qy * s, gz = z1 + qz * s;
+        double hx = x1 - qx * s, hy = y1 - qy * s, hz = z1 - qz * s;
+        quad(buf, mat, ax, ay, az, bx, by, bz, fx, fy, fz, ex, ey, ez, r, g, b, a);
+        quad(buf, mat, cx, cy, cz, dx0, dy0, dz0, hx, hy, hz, gx, gy, gz, r, g, b, a);
+    }
+
     private static void line(
             BufferBuilder buf, Matrix4f mat,
             double x0, double y0, double z0,
@@ -763,7 +1013,7 @@ public final class ZoneRenderer {
             float r, float g, float b, float baseA,
             ZoneSettings.OutlineProximity prox, float radius) {
         if (prox == ZoneSettings.OutlineProximity.ALWAYS) {
-            line(buf, mat, x0, y0, z0, x1, y1, z1, r, g, b, baseA);
+            beam(buf, mat, x0, y0, z0, x1, y1, z1, r, g, b, baseA);
             return;
         }
         double dx = x1 - x0;
@@ -780,7 +1030,7 @@ public final class ZoneRenderer {
             double dist = horizDistToSegment(player.x, player.z, ax, az, bx, bz);
             float mult = proximityAlpha(dist, prox, radius);
             if (mult > 0.001f) {
-                line(buf, mat, ax, ay, az, bx, by, bz, r, g, b, baseA * mult);
+                beam(buf, mat, ax, ay, az, bx, by, bz, r, g, b, baseA * mult);
             }
         }
     }

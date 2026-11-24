@@ -181,6 +181,13 @@ public class ZoneEditScreen extends ZoneCreateScreen {
                             : "message.yblk_zones.need_edit_perm"), true);
             return;
         }
+        gate.setScreen(new ConfirmActionScreen(this,
+                Component.translatable("screen.yblk_zones.delete_title"),
+                Component.translatable("screen.yblk_zones.delete_body"),
+                this::deleteNow));
+    }
+
+    private void deleteNow() {
         ZonesNetwork.CHANNEL.sendToServer(new DeleteZonePacket(zoneId));
         ZoneSelection.clear();
         onClose();

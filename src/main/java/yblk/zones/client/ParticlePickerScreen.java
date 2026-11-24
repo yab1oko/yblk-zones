@@ -1,6 +1,8 @@
 package yblk.zones.client;
 
+import com.google.gson.JsonElement;
 import net.minecraft.client.Minecraft;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
@@ -11,13 +13,17 @@ import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.GsonHelper;
 import net.minecraft.util.Mth;
-import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
 
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -40,7 +46,12 @@ public class ParticlePickerScreen extends Screen {
     private EditBox search;
     private int scroll;
     private int panelX, panelY, panelW, panelH;
+    private int previewX, previewY, previewW, previewH;
+    private int listW;
     private ResourceLocation previewId;
+    private final Map<ResourceLocation, List<Sheet>> frameCache = new HashMap<>();
+    private ResourceLocation bitsFor;
+    private final List<GuiBit> bits = new ArrayList<>();
     private int previewTicks;
     private boolean soundsMuted;
 
@@ -64,11 +75,16 @@ public class ParticlePickerScreen extends Screen {
     protected void init() {
         clearWidgets();
         rows.clear();
-        panelW = Math.min(200, Math.max(120, width / 2 - 56));
-        panelH = Math.min(280, height - 20);
-        panelX = 8;
+        panelW = Math.min(460, width - 16);
+        panelH = Math.min(280, height - 16);
+        panelX = (width - panelW) / 2;
         panelY = (height - panelH) / 2;
-        search = new EditBox(font, panelX + 10, panelY + 22, panelW - 20, 14,
+        previewW = Math.min(148, panelW / 3);
+        previewH = panelH - 28;
+        previewX = panelX + panelW - previewW - 8;
+        previewY = panelY + 14;
+        listW = previewX - panelX - 12;
+        search = new EditBox(font, panelX + 10, panelY + 22, listW - 16, 14,
                 Component.translatable("screen.yblk_zones.search"));
         search.setResponder(this::filter);
         search.setTextColor(TEXT);
@@ -76,7 +92,7 @@ public class ParticlePickerScreen extends Screen {
         rebuildList();
         addRenderableWidget(new Btn(panelX + 10, panelY + panelH - 22, 80, 14,
                 Component.translatable("gui.cancel"), this::closeToParent));
-        addRenderableWidget(new Btn(panelX + panelW - 90, panelY + panelH - 22, 80, 14,
+        addRenderableWidget(new Btn(panelX + listW - 90, panelY + panelH - 22, 80, 14,
                 Component.translatable("screen.yblk_zones.clear"), () -> {
             onPick.accept("");
             closeToParent();
@@ -136,7 +152,7 @@ public class ParticlePickerScreen extends Screen {
         int bottom = panelY + panelH - 48;
         int y = top - scroll;
         for (ResourceLocation id : filtered) {
-            Row row = new Row(panelX + 10, y, panelW - 20, 14, id);
+            Row row = new Row(panelX + 10, y, listW - 16, 14, id);
             boolean show = y + 14 > top && y < bottom;
             row.visible = show;
             row.active = show;
@@ -155,26 +171,110 @@ public class ParticlePickerScreen extends Screen {
         if (mc.level == null || mc.player == null || previewId == null) {
             return;
         }
-        if (previewTicks % 2 != 0) {
-            return;
+        if (!previewId.equals(bitsFor)) {
+            bits.clear();
+            bitsFor = previewId;
         }
-        ParticleType<?> type = ForgeRegistries.PARTICLE_TYPES.getValue(previewId);
-        if (!(type instanceof SimpleParticleType simple)) {
-            return;
+        Iterator<GuiBit> it = bits.iterator();
+        while (it.hasNext()) {
+            GuiBit bit = it.next();
+            bit.x += bit.vx;
+            bit.y += bit.vy;
+            bit.vy += 0.04F;
+            if (--bit.life <= 0 || bit.y > previewH) {
+                it.remove();
+            }
         }
-        Vec3 eye = mc.player.getEyePosition(1.0F);
-        Vec3 look = mc.player.getViewVector(1.0F);
-        Vec3 base = eye.add(look.scale(0.85));
-        var rand = mc.level.random;
-        for (int i = 0; i < 6; i++) {
-            double ox = (rand.nextDouble() - 0.5) * 0.55;
-            double oy = (rand.nextDouble() - 0.5) * 0.55;
-            double oz = (rand.nextDouble() - 0.5) * 0.55;
-            mc.level.addParticle(simple, true,
-                    base.x + ox, base.y + oy, base.z + oz,
-                    (rand.nextDouble() - 0.5) * 0.02,
-                    0.02 + rand.nextDouble() * 0.04,
-                    (rand.nextDouble() - 0.5) * 0.02);
+        if (bits.size() < 3 && previewTicks % 5 == 0 && previewW > 8) {
+            var rand = mc.level.random;
+            bits.add(new GuiBit(
+                    previewW / 2F + (rand.nextFloat() - 0.5F) * 16F,
+                    previewH * 0.55F,
+                    (rand.nextFloat() - 0.5F) * 0.25F,
+                    -0.22F - rand.nextFloat() * 0.15F,
+                    36 + rand.nextInt(18)));
+        }
+    }
+
+    private List<Sheet> framesFor(ResourceLocation id) {
+        List<Sheet> cached = frameCache.get(id);
+        if (cached != null) {
+            return cached;
+        }
+        List<Sheet> found = new ArrayList<>();
+        ResourceLocation json = new ResourceLocation(id.getNamespace(), "particles/" + id.getPath() + ".json");
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            var resource = mc.getResourceManager().getResource(json);
+            if (resource.isPresent()) {
+                try (var reader = new InputStreamReader(resource.get().open(), StandardCharsets.UTF_8)) {
+                    var obj = GsonHelper.parse(reader);
+                    for (JsonElement el : GsonHelper.getAsJsonArray(obj, "textures")) {
+                        Sheet sheet = sheetFor(new ResourceLocation(el.getAsString()));
+                        if (sheet != null) {
+                            found.add(sheet);
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            found.clear();
+        }
+        frameCache.put(id, found);
+        return found;
+    }
+
+    private static Sheet sheetFor(ResourceLocation tex) {
+        String path = tex.getPath().startsWith("textures/")
+                ? tex.getPath()
+                : "textures/particle/" + tex.getPath() + ".png";
+        ResourceLocation file = new ResourceLocation(tex.getNamespace(), path);
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            var resource = mc.getResourceManager().getResource(file);
+            if (resource.isEmpty()) {
+                return null;
+            }
+            try (var in = resource.get().open()) {
+                NativeImage image = NativeImage.read(in);
+                int w = image.getWidth();
+                int h = image.getHeight();
+                image.close();
+                int frame = w > 0 && h > w && h % w == 0 ? w : Math.min(w, h);
+                return new Sheet(file, w, h, Math.max(1, frame));
+            }
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static final class Sheet {
+        final ResourceLocation file;
+        final int width;
+        final int height;
+        final int frame;
+
+        Sheet(ResourceLocation file, int width, int height, int frame) {
+            this.file = file;
+            this.width = width;
+            this.height = height;
+            this.frame = frame;
+        }
+    }
+
+    private static final class GuiBit {
+        float x;
+        float y;
+        float vx;
+        float vy;
+        int life;
+
+        GuiBit(float x, float y, float vx, float vy, int life) {
+            this.x = x;
+            this.y = y;
+            this.vx = vx;
+            this.vy = vy;
+            this.life = life;
         }
     }
 
@@ -189,32 +289,51 @@ public class ParticlePickerScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        int well = 72;
-        int wx = this.width / 2 - well / 2;
-        int wy = this.height / 2 - well / 2;
-        int dim = 0xC0101014;
-        g.fill(0, 0, this.width, wy, dim);
-        g.fill(0, wy, wx, wy + well, dim);
-        g.fill(wx + well, wy, this.width, wy + well, dim);
-        g.fill(0, wy + well, this.width, this.height, dim);
-        g.fill(wx - 1, wy - 1, wx + well + 1, wy, ACCENT);
-        g.fill(wx - 1, wy + well, wx + well + 1, wy + well + 1, ACCENT);
-        g.fill(wx - 1, wy, wx, wy + well, ACCENT);
-        g.fill(wx + well, wy, wx + well + 1, wy + well, ACCENT);
-        ParticleType<?> shown = previewId == null ? null : ForgeRegistries.PARTICLE_TYPES.getValue(previewId);
-        if (previewId != null && !(shown instanceof SimpleParticleType)) {
-            String none = Component.translatable("screen.yblk_zones.particle_no_preview").getString();
-            g.drawString(font, none, wx + 4, wy + well / 2 - 4, TEXT, false);
-        }
-        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, PANEL);
+        int dim = 0xFF101014;
+        int x0 = previewX;
+        int y0 = previewY;
+        int x1 = previewX + previewW;
+        int y1 = previewY + previewH;
+        g.fill(0, 0, this.width, y0, dim);
+        g.fill(0, y0, x0, y1, dim);
+        g.fill(x1, y0, this.width, y1, dim);
+        g.fill(0, y1, this.width, this.height, dim);
+        g.fill(x0 - 1, y0 - 1, x1 + 1, y0, ACCENT);
+        g.fill(x0 - 1, y1, x1 + 1, y1 + 1, ACCENT);
+        g.fill(x0 - 1, y0, x0, y1, ACCENT);
+        g.fill(x1, y0, x1 + 1, y1, ACCENT);
+        g.fill(x0, y0, x1, y1, 0xFF12121A);
+        g.fill(panelX, panelY, previewX - 4, panelY + panelH, PANEL);
         g.fill(panelX, panelY, panelX + panelW, panelY + 1, ACCENT);
         g.drawString(font, title, panelX + 10, panelY + 8, ACCENT, false);
         String preview = previewId == null
                 ? Component.translatable("screen.yblk_zones.particle_preview_hint").getString()
                 : Component.translatable("screen.yblk_zones.particle_preview", previewId.getPath()).getString();
-        g.drawString(font, font.plainSubstrByWidth(preview, panelW - 20),
+        g.drawString(font, font.plainSubstrByWidth(preview, listW - 20),
                 panelX + 10, panelY + panelH - 38, MUTED, false);
         super.render(g, mouseX, mouseY, partial);
+        g.fill(x0, y0, x1, y1, 0xFF12121A);
+        g.fill(x0 - 1, y0 - 1, x1 + 1, y0, ACCENT);
+        g.fill(x0 - 1, y1, x1 + 1, y1 + 1, ACCENT);
+        g.fill(x0 - 1, y0, x0, y1, ACCENT);
+        g.fill(x1, y0, x1 + 1, y1, ACCENT);
+        List<Sheet> frames = previewId == null ? List.of() : framesFor(previewId);
+        Sheet sheet = frames.isEmpty() ? null : frames.get((previewTicks / 4) % frames.size());
+        int size = 48;
+        for (GuiBit bit : bits) {
+            int px = x0 + Math.round(bit.x) - size / 2;
+            int py = y0 + Math.round(bit.y) - size / 2;
+            px = Mth.clamp(px, x0 + 2, Math.max(x0 + 2, x1 - size - 2));
+            py = Mth.clamp(py, y0 + 2, Math.max(y0 + 2, y1 - size - 2));
+            if (sheet != null) {
+                int count = Math.max(1, sheet.height / sheet.frame);
+                int index = (previewTicks / 4) % count;
+                float v = index * sheet.frame;
+                g.blit(sheet.file, px, py, size, size, 0, v, sheet.frame, sheet.frame, sheet.width, sheet.height);
+            } else {
+                g.fill(px + 8, py + 8, px + 20, py + 20, ACCENT);
+            }
+        }
     }
 
     @Override

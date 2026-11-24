@@ -156,6 +156,13 @@ public final class ZoneSettings {
     private final Set<UUID> trustedIds = new LinkedHashSet<>();
     /** Scoreboard team name; empty = unused. */
     private String trustedTeam = "";
+    /** Guests on a claim. Break and place start denied, matching the old claim. */
+    private boolean claimDenyBreak = true;
+    private boolean claimDenyPlace = true;
+    private boolean claimDenyBlockUse = true;
+    private boolean claimDenyEntityUse = false;
+    private boolean claimDenyAttack = false;
+    private boolean claimDenyHurt = false;
 
     private final List<EffectEntry> effects = new ArrayList<>();
     private String enterTitle = "";
@@ -607,6 +614,54 @@ public final class ZoneSettings {
         this.hatchHeight = Mth.clamp(height, 0.5F, 16.0F);
     }
 
+    public boolean claimDenyBreak() {
+        return claimDenyBreak;
+    }
+
+    public void setClaimDenyBreak(boolean claimDenyBreak) {
+        this.claimDenyBreak = claimDenyBreak;
+    }
+
+    public boolean claimDenyPlace() {
+        return claimDenyPlace;
+    }
+
+    public void setClaimDenyPlace(boolean claimDenyPlace) {
+        this.claimDenyPlace = claimDenyPlace;
+    }
+
+    public boolean claimDenyBlockUse() {
+        return claimDenyBlockUse;
+    }
+
+    public void setClaimDenyBlockUse(boolean claimDenyBlockUse) {
+        this.claimDenyBlockUse = claimDenyBlockUse;
+    }
+
+    public boolean claimDenyEntityUse() {
+        return claimDenyEntityUse;
+    }
+
+    public void setClaimDenyEntityUse(boolean claimDenyEntityUse) {
+        this.claimDenyEntityUse = claimDenyEntityUse;
+    }
+
+    public boolean claimDenyAttack() {
+        return claimDenyAttack;
+    }
+
+    public void setClaimDenyAttack(boolean claimDenyAttack) {
+        this.claimDenyAttack = claimDenyAttack;
+    }
+
+    public boolean claimDenyHurt() {
+        return claimDenyHurt;
+    }
+
+    public void setClaimDenyHurt(boolean claimDenyHurt) {
+        this.claimDenyHurt = claimDenyHurt;
+    }
+
     public Set<String> trustedNames() {
         return trustedNames;
     }
@@ -775,6 +830,12 @@ public final class ZoneSettings {
         tag.putInt("EventWaves", eventWaves);
         tag.putBoolean("EventWinOnClear", eventWinOnClear);
         tag.putString("TrustedTeam", trustedTeam);
+        tag.putBoolean("ClaimDenyBreak", claimDenyBreak);
+        tag.putBoolean("ClaimDenyPlace", claimDenyPlace);
+        tag.putBoolean("ClaimDenyBlockUse", claimDenyBlockUse);
+        tag.putBoolean("ClaimDenyEntityUse", claimDenyEntityUse);
+        tag.putBoolean("ClaimDenyAttack", claimDenyAttack);
+        tag.putBoolean("ClaimDenyHurt", claimDenyHurt);
         ListTag names = new ListTag();
         for (String n : trustedNames) {
             names.add(StringTag.valueOf(n));
@@ -900,6 +961,12 @@ public final class ZoneSettings {
         }
         eventWinOnClear = tag.getBoolean("EventWinOnClear");
         trustedTeam = tag.getString("TrustedTeam");
+        claimDenyBreak = !tag.contains("ClaimDenyBreak") || tag.getBoolean("ClaimDenyBreak");
+        claimDenyPlace = !tag.contains("ClaimDenyPlace") || tag.getBoolean("ClaimDenyPlace");
+        claimDenyBlockUse = !tag.contains("ClaimDenyBlockUse") || tag.getBoolean("ClaimDenyBlockUse");
+        claimDenyEntityUse = tag.getBoolean("ClaimDenyEntityUse");
+        claimDenyAttack = tag.getBoolean("ClaimDenyAttack");
+        claimDenyHurt = tag.getBoolean("ClaimDenyHurt");
         ListTag names = tag.getList("TrustedNames", Tag.TAG_STRING);
         for (int i = 0; i < names.size(); i++) {
             trustedNames.add(names.getString(i));
